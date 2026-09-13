@@ -1,92 +1,371 @@
-import React from 'react';
+import React, {useEffect, useState} from 'react';
 import {
+  Alert,
   FlatList,
-  Pressable,
   SafeAreaView,
   StyleSheet,
   Text,
+  TextInput,
+  TouchableOpacity,
   View,
 } from 'react-native';
 
-const payments = [
-  {id: '1', member: 'Rahul Sharma', amount: '₹2,000', date: '13 Sep 2026', type: 'Membership'},
-  {id: '2', member: 'Sneha Kulkarni', amount: '₹9,500', date: '12 Sep 2026', type: 'Membership'},
-  {id: '3', member: 'Amit Patil', amount: '₹1,000', date: '11 Sep 2026', type: 'Partial payment'},
-];
+import {container} from '../../../di/container';
+import {Payment, PaymentMethod} from '../../../domain/entities/Payment';
 
-export function PaymentsScreen() {
+interface PaymentsScreenProps {
+  route: {
+    params: {
+      memberId: string;
+      memberName: string;
+    };
+  };
+}
+
+export default function PaymentsScreen({
+  route,
+}: PaymentsScreenProps) {
+  const {memberId, memberName} = route.params;
+
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [totalPaid, setTotalPaid] = useState(0);
+
+  const [amount, setAmount] = useState('');
+  const [paymentMethod, setPaymentMethod] =
+    useState<PaymentMethod>('cash');
+  const [notes, setNotes] = useState('');
+
+  const loadPayments = async () => {
+    try {
+      const [history, total] = await Promise.all([
+        container.useCases.getPaymentHistory.execute(memberId),
+        container.useCases.getTotalPaid.execute(memberId),
+      ]);
+
+      setPayments(history);
+      setTotalPaid(total);
+    } catch (error) {
+      Alert.alert(
+        'Error',
+        'Unable to load payment information.',
+      );
+    }
+  };
+
+  useEffect(() => {
+    loadPayments();
+  }, [memberId]);
+
+  const handleRecordPayment = async () => {
+    const numericAmount = Number(amount);
+
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      Alert.alert(
+        'Invalid amount',
+        'Enter a payment amount greater than zero.',
+      );
+      return;
+    }
+
+    try {
+      await container.useCases.recordPayment.execute({
+        memberId,
+        amount: numericAmount,
+        paymentMethod,
+        recordedBy: 'current-user',
+        notes: notes.trim() || undefined,
+      });
+
+      setAmount('');
+      setNotes('');
+
+      await loadPayments();
+
+      Alert.alert('Success', 'Payment recorded successfully.');
+    } catch (error) {
+      Alert.alert(
+        'Error',
+        error instanceof Error
+          ? error.message
+          : 'Unable to record payment.',
+      );
+    }
+  };
+
+  const renderPayment = ({item}: {item: Payment}) => (
+    <View style={styles.paymentCard}>
+      <View>
+        <Text style={styles.paymentAmount}>
+          ₹{item.amount.toLocaleString('en-IN')}
+        </Text>
+
+        <Text style={styles.paymentDate}>
+          {new Date(item.paymentDate).toLocaleDateString('en-IN')}
+        </Text>
+      </View>
+
+      <View style={styles.paymentRight}>
+        <Text style={styles.paymentMethod}>
+          {item.paymentMethod.toUpperCase()}
+        </Text>
+
+        {item.notes ? (
+          <Text style={styles.notes}>{item.notes}</Text>
+        ) : null}
+      </View>
+    </View>
+  );
+
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.summary}>
-        <Text style={styles.summaryLabel}>Collected this month</Text>
-        <Text style={styles.total}>₹1,24,500</Text>
-        <Text style={styles.pending}>₹24,500 pending</Text>
-      </View>
-
-      <View style={styles.header}>
-        <Text style={styles.title}>Recent payments</Text>
-        <Pressable
-          style={styles.button}
-          onPress={() => undefined}>
-          <Text style={styles.buttonText}>+ Payment</Text>
-        </Pressable>
-      </View>
-
+    <SafeAreaView style={styles.container}>
       <FlatList
         data={payments}
         keyExtractor={item => item.id}
-        contentContainerStyle={styles.list}
-        renderItem={({item}) => (
-          <View style={styles.card}>
-            <View style={styles.icon}>
-              <Text>₹</Text>
+        renderItem={renderPayment}
+        contentContainerStyle={styles.content}
+        ListHeaderComponent={
+          <View>
+            <Text style={styles.title}>Payments</Text>
+
+            <Text style={styles.memberName}>
+              {memberName}
+            </Text>
+
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryLabel}>
+                Total Paid
+              </Text>
+
+              <Text style={styles.summaryAmount}>
+                ₹{totalPaid.toLocaleString('en-IN')}
+              </Text>
             </View>
-            <View style={styles.info}>
-              <Text style={styles.member}>{item.member}</Text>
-              <Text style={styles.meta}>{item.type} • {item.date}</Text>
+
+            <Text style={styles.sectionTitle}>
+              Record Payment
+            </Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Amount"
+              keyboardType="numeric"
+              value={amount}
+              onChangeText={setAmount}
+            />
+
+            <Text style={styles.label}>
+              Payment Method
+            </Text>
+
+            <View style={styles.methods}>
+              {(['cash', 'upi', 'card', 'bank', 'other'] as PaymentMethod[]).map(
+                method => (
+                  <TouchableOpacity
+                    key={method}
+                    style={[
+                      styles.methodButton,
+                      paymentMethod === method &&
+                        styles.selectedMethod,
+                    ]}
+                    onPress={() => setPaymentMethod(method)}>
+                    <Text
+                      style={[
+                        styles.methodText,
+                        paymentMethod === method &&
+                          styles.selectedMethodText,
+                      ]}>
+                      {method.toUpperCase()}
+                    </Text>
+                  </TouchableOpacity>
+                ),
+              )}
             </View>
-            <Text style={styles.amount}>{item.amount}</Text>
+
+            <TextInput
+              style={[styles.input, styles.notesInput]}
+              placeholder="Notes (optional)"
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+            />
+
+            <TouchableOpacity
+              style={styles.recordButton}
+              onPress={handleRecordPayment}>
+              <Text style={styles.recordButtonText}>
+                Record Payment
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={styles.sectionTitle}>
+              Payment History
+            </Text>
           </View>
-        )}
+        }
+        ListEmptyComponent={
+          <Text style={styles.empty}>
+            No payments recorded yet.
+          </Text>
+        }
       />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {flex: 1, backgroundColor: '#F6F7F9'},
-  summary: {backgroundColor: '#FFFFFF', margin: 16, padding: 18, borderRadius: 18},
-  summaryLabel: {color: '#6B7280'},
-  total: {fontSize: 30, fontWeight: '800', marginTop: 4, color: '#111827'},
-  pending: {marginTop: 4, color: '#B45309'},
-  header: {
-    paddingHorizontal: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
   },
-  title: {fontSize: 18, fontWeight: '800', color: '#111827'},
-  button: {backgroundColor: '#111827', borderRadius: 11, padding: 10},
-  buttonText: {color: '#FFFFFF', fontWeight: '800'},
-  list: {padding: 16},
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 15,
-    padding: 14,
+
+  content: {
+    padding: 20,
+    paddingBottom: 40,
+  },
+
+  title: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#111',
+  },
+
+  memberName: {
+    fontSize: 18,
+    marginTop: 4,
+    marginBottom: 20,
+    color: '#666',
+  },
+
+  summaryCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    marginBottom: 24,
+  },
+
+  summaryLabel: {
+    fontSize: 14,
+    color: '#666',
+  },
+
+  summaryAmount: {
+    fontSize: 30,
+    fontWeight: '700',
+    marginTop: 6,
+    color: '#111',
+  },
+
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 12,
+    marginTop: 8,
+    color: '#111',
+  },
+
+  input: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 16,
+    marginBottom: 12,
+  },
+
+  notesInput: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+
+  methods: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 12,
+  },
+
+  methodButton: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+
+  selectedMethod: {
+    backgroundColor: '#111',
+  },
+
+  methodText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#333',
+  },
+
+  selectedMethodText: {
+    color: '#fff',
+  },
+
+  recordButton: {
+    backgroundColor: '#111',
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+
+  recordButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  paymentCard: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 16,
     marginBottom: 10,
     flexDirection: 'row',
-    alignItems: 'center',
+    justifyContent: 'space-between',
   },
-  icon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
+
+  paymentAmount: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111',
   },
-  info: {flex: 1, marginLeft: 12},
-  member: {fontWeight: '800', color: '#111827'},
-  meta: {marginTop: 4, color: '#6B7280', fontSize: 12},
-  amount: {fontWeight: '800', color: '#111827'},
+
+  paymentDate: {
+    fontSize: 13,
+    color: '#777',
+    marginTop: 4,
+  },
+
+  paymentRight: {
+    alignItems: 'flex-end',
+  },
+
+  paymentMethod: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#555',
+  },
+
+  notes: {
+    fontSize: 12,
+    color: '#777',
+    marginTop: 4,
+  },
+
+  empty: {
+    textAlign: 'center',
+    color: '#777',
+    marginTop: 20,
+  },
 });
+

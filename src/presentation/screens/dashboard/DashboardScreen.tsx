@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useCallback, useState} from 'react';
 import {
   Pressable,
   SafeAreaView,
@@ -7,10 +7,33 @@ import {
   Text,
   View,
 } from 'react-native';
-import {useNavigation} from '@react-navigation/native';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
+
+import {DashboardStats} from '../../../application/dashboard/GetDashboardStats';
+import {container} from '../../../di/container';
+
+const emptyStats: DashboardStats = {
+  totalMembers: 0,
+  activeMembers: 0,
+  disabledMembers: 0,
+  feesDue: 0,
+  birthdaysToday: 0,
+  expiringSoon: 0,
+};
 
 export function DashboardScreen() {
   const navigation = useNavigation<any>();
+  const [stats, setStats] = useState(emptyStats);
+
+  const load = useCallback(async () => {
+    setStats(await container.useCases.getDashboardStats.execute());
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -18,7 +41,7 @@ export function DashboardScreen() {
         <View style={styles.header}>
           <View>
             <Text style={styles.brand}>Gym Manager</Text>
-            <Text style={styles.subtitle}>Good evening</Text>
+            <Text style={styles.subtitle}>Your gym at a glance</Text>
           </View>
           <Pressable
             style={styles.settingsButton}
@@ -28,10 +51,13 @@ export function DashboardScreen() {
         </View>
 
         <View style={styles.statsGrid}>
-          <StatCard label="Total Members" value="128" />
-          <StatCard label="Active" value="116" />
-          <StatCard label="Fees Due" value="₹24,500" />
-          <StatCard label="Birthdays" value="3" />
+          <StatCard label="Total Members" value={String(stats.totalMembers)} />
+          <StatCard label="Active" value={String(stats.activeMembers)} />
+          <StatCard
+            label="Fees Due"
+            value={`₹${stats.feesDue.toLocaleString('en-IN')}`}
+          />
+          <StatCard label="Birthdays Today" value={String(stats.birthdaysToday)} />
         </View>
 
         <Text style={styles.sectionTitle}>Quick Actions</Text>
@@ -72,29 +98,21 @@ export function DashboardScreen() {
         <Text style={styles.sectionTitle}>Needs Attention</Text>
 
         <View style={styles.alertCard}>
-          <View style={styles.alertIcon}>
-            <Text>₹</Text>
-          </View>
           <View style={styles.alertBody}>
-            <Text style={styles.alertTitle}>Fees overdue</Text>
-            <Text style={styles.alertText}>12 members have pending fees</Text>
+            <Text style={styles.alertTitle}>Memberships expiring soon</Text>
+            <Text style={styles.alertText}>
+              {stats.expiringSoon} membership{stats.expiringSoon === 1 ? '' : 's'} expire within 7 days.
+            </Text>
           </View>
-          <Pressable onPress={() => navigation.navigate('Payments')}>
-            <Text style={styles.viewText}>View</Text>
-          </Pressable>
         </View>
 
         <View style={styles.alertCard}>
-          <View style={styles.alertIcon}>
-            <Text>★</Text>
-          </View>
           <View style={styles.alertBody}>
-            <Text style={styles.alertTitle}>Birthdays today</Text>
-            <Text style={styles.alertText}>3 members have birthdays</Text>
+            <Text style={styles.alertTitle}>Disabled members</Text>
+            <Text style={styles.alertText}>
+              {stats.disabledMembers} member{stats.disabledMembers === 1 ? '' : 's'} currently disabled.
+            </Text>
           </View>
-          <Pressable onPress={() => navigation.navigate('Birthdays')}>
-            <Text style={styles.viewText}>View</Text>
-          </Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -147,11 +165,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   settingsText: {fontSize: 21},
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
+  statsGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 12},
   statCard: {
     width: '48%',
     backgroundColor: '#FFFFFF',
@@ -167,11 +181,7 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#111827',
   },
-  actionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
+  actionsGrid: {flexDirection: 'row', flexWrap: 'wrap', gap: 12},
   actionCard: {
     width: '31%',
     minHeight: 92,
@@ -184,23 +194,12 @@ const styles = StyleSheet.create({
   actionIcon: {fontSize: 24, marginBottom: 8},
   actionTitle: {fontSize: 12, fontWeight: '700', color: '#374151'},
   alertCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 14,
     marginBottom: 10,
   },
-  alertIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  alertBody: {flex: 1, marginLeft: 12},
+  alertBody: {flex: 1},
   alertTitle: {fontWeight: '800', color: '#111827'},
   alertText: {marginTop: 3, color: '#6B7280', fontSize: 13},
-  viewText: {fontWeight: '800', color: '#2563EB'},
 });

@@ -1,5 +1,5 @@
-import {Member} from '../../domain/entities/Member';
 import {MemberRepository} from '../../domain/repositories/MemberRepository';
+import {Member} from '../../domain/entities/Member';
 import {IdGenerator} from '../shared/IdGenerator';
 
 export interface AddMemberInput {
@@ -8,9 +8,6 @@ export interface AddMemberInput {
   phone: string;
   email?: string;
   dateOfBirth?: string;
-  address?: string;
-  gender?: string;
-  photoUri?: string;
 }
 
 export class AddMemberUseCase {
@@ -20,37 +17,31 @@ export class AddMemberUseCase {
   ) {}
 
   async execute(input: AddMemberInput): Promise<Member> {
-    const firstName = input.firstName.trim();
-    const phone = input.phone.trim();
-
-    if (!firstName) {
+    if (!input.firstName.trim()) {
       throw new Error('First name is required');
     }
 
-    if (!phone) {
+    if (!input.phone.trim()) {
       throw new Error('Phone number is required');
     }
 
     const now = new Date().toISOString();
+    const id = this.idGenerator.generate();
 
     const member: Member = {
-      id: this.idGenerator.generate(),
-      memberNumber: `GYM-${Date.now()}`,
-      firstName,
-      lastName: input.lastName?.trim(),
-      phone,
-      email: input.email?.trim(),
-      dateOfBirth: input.dateOfBirth,
-      address: input.address?.trim(),
-      gender: input.gender,
-      photoUri: input.photoUri,
+      id,
+      memberNumber: `GYM-${id.replace(/-/g, '').slice(0, 8).toUpperCase()}`,
+      firstName: input.firstName.trim(),
+      lastName: input.lastName?.trim() || undefined,
+      phone: input.phone.trim(),
+      email: input.email?.trim() || undefined,
+      dateOfBirth: input.dateOfBirth?.trim() || undefined,
       status: 'active',
       createdAt: now,
       updatedAt: now,
     };
 
     await this.memberRepository.save(member);
-
     return member;
   }
 }

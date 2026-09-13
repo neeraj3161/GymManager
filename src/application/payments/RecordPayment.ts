@@ -31,18 +31,18 @@ export class RecordPaymentUseCase {
 
     const now = new Date().toISOString();
 
-    const payment: Payment = {
-      id: this.idGenerator.generate(),
-      memberId: input.memberId,
-      amount: input.amount,
-      paymentDate: now,
-      paymentMethod: input.paymentMethod,
-      notes: input.notes,
-      recordedBy: input.recordedBy,
-      createdAt: now,
-    };
+ const payment: Payment = {
+  id: this.idGenerator.generate(),
+  memberId: input.memberId,
+  amount: input.amount,
+  paymentDate: now,
+  paymentMethod: input.paymentMethod,
+  notes: input.notes,
+  recordedBy: input.recordedBy,
+  createdAt: now,
+};
 
-    await this.paymentRepository.save(payment);
+    await this.paymentRepository.create(payment);
 
     return payment;
   }

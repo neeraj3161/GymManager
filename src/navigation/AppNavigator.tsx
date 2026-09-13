@@ -6,24 +6,32 @@ import {DashboardScreen} from '../presentation/screens/dashboard/DashboardScreen
 import {MembersScreen} from '../presentation/screens/members/MembersScreen';
 import {AddMemberScreen} from '../presentation/screens/members/AddMemberScreen';
 import {MemberDetailsScreen} from '../presentation/screens/members/MemberDetailsScreen';
-import {PaymentsScreen} from '../presentation/screens/payments/PaymentsScreen';
+import PaymentsScreen from '../presentation/screens/payments/PaymentsScreen';
 import {PlansScreen} from '../presentation/screens/plans/PlansScreen';
 import {BirthdaysScreen} from '../presentation/screens/birthdays/BirthdaysScreen';
 import {StaffScreen} from '../presentation/screens/staff/StaffScreen';
 import {SettingsScreen} from '../presentation/screens/settings/SettingsScreen';
 import {BackupScreen} from '../presentation/screens/settings/BackupScreen';
+import {RenewMembershipScreen} from '../presentation/screens/memberships/RenewMembershipScreen';
 
 export type RootStackParamList = {
   Dashboard: undefined;
   Members: undefined;
   AddMember: undefined;
   MemberDetails: {memberId: string};
-  Payments: undefined;
+  Payments: {
+    memberId: string;
+    memberName: string;
+  };
   Plans: undefined;
   Birthdays: undefined;
   Staff: undefined;
   Settings: undefined;
   Backup: undefined;
+  RenewMembership: {
+  memberId: string;
+  memberName: string;
+};
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -42,6 +50,11 @@ export function AppNavigator() {
           component={DashboardScreen}
           options={{title: 'Gym Manager'}}
         />
+        <Stack.Screen
+  name="RenewMembership"
+  component={RenewMembershipScreen}
+  options={{title: 'Renew Membership'}}
+/>
         <Stack.Screen
           name="Members"
           component={MembersScreen}

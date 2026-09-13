@@ -1,6 +1,7 @@
-import React from 'react';
+import React, {useCallback, useState} from 'react';
 import {
   Alert,
+  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -8,61 +9,225 @@ import {
   Text,
   View,
 } from 'react-native';
+import {useFocusEffect, useNavigation, useRoute} from '@react-navigation/native';
+
+import {Member} from '../../../domain/entities/Member';
+import {Membership} from '../../../domain/entities/Membership';
+import {MembershipPlan} from '../../../domain/entities/MembershipPlan';
+import {container} from '../../../di/container';
+import {MemberFeeStatus} from '../../../application/payments/GetMemberFeeStatus';
 
 export function MemberDetailsScreen() {
-  const disable = () =>
-    Alert.alert('Disable member', 'Are you sure you want to disable Rahul Sharma?', [
-      {text: 'Cancel', style: 'cancel'},
-      {text: 'Disable', style: 'destructive'},
-    ]);
+  const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+  const memberId = route.params?.memberId as string;
+
+  const [member, setMember] = useState<Member | null>(null);
+  const [membership, setMembership] = useState<Membership | null>(null);
+  const [plan, setPlan] = useState<MembershipPlan | null>(null);
+  const [feeStatus, setFeeStatus] = useState<MemberFeeStatus | null>(null);
+
+  const load = useCallback(async () => {
+  const memberData =
+    await container.useCases.getMemberDetails.execute(memberId);
+
+  const membershipData =
+    await container.repositories.membership.getByMemberId(memberId);
+
+  const feeStatusData =
+    await container.useCases.getMemberFeeStatus.execute(memberId);
+
+  setMember(memberData);
+  setMembership(membershipData);
+  setFeeStatus(feeStatusData);
+
+  if (membershipData) {
+    setPlan(
+      await container.repositories.plan.getById(
+        membershipData.planId,
+      ),
+    );
+  }
+}, [memberId]);
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
+
+  const disable = () => {
+    Alert.alert(
+      'Disable member',
+      'The member will remain in the database but will no longer be active.',
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Disable',
+          style: 'destructive',
+          onPress: async () => {
+            await container.useCases.disableMember.execute(memberId);
+            await load();
+          },
+        },
+      ],
+    );
+  };
+
+  const enable = async () => {
+    await container.useCases.enableMember.execute(memberId);
+    await load();
+  };
+
+  if (!member) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <Text style={styles.empty}>Member not found.</Text>
+      </SafeAreaView>
+    );
+  }
+
+  const callMember = async () => {
+  const phoneNumber = member.phone.replace(/[^\d+]/g, '');
+
+  const url = `tel:${phoneNumber}`;
+
+  const supported = await Linking.canOpenURL(url);
+
+  if (supported) {
+    await Linking.openURL(url);
+  } else {
+    Alert.alert(
+      'Unable to call',
+      'The phone dialer is not available on this device.',
+    );
+  }
+};
 
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.profile}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>R</Text>
+            <Text style={styles.avatarText}>{member.firstName.charAt(0)}</Text>
           </View>
-          <Text style={styles.name}>Rahul Sharma</Text>
-          <Text style={styles.phone}>+91 98765 43210</Text>
-          <View style={styles.activeBadge}>
-            <Text style={styles.activeText}>ACTIVE</Text>
+          <Text style={styles.name}>
+            {member.firstName} {member.lastName ?? ''}
+          </Text>
+<Pressable
+  style={styles.phoneRow}
+  onPress={callMember}>
+  <Text style={styles.phone}>{member.phone}</Text>
+  <Text style={styles.callIcon}>☎</Text>
+</Pressable>          <Text style={styles.memberNumber}>{member.memberNumber}</Text>
+
+          <View
+            style={[
+              styles.badge,
+              member.status === 'active' ? styles.activeBadge : styles.disabledBadge,
+            ]}>
+            <Text style={styles.badgeText}>
+              {member.status.toUpperCase()}
+            </Text>
           </View>
         </View>
 
         <Section title="Membership">
-          <Row label="Plan" value="3 Months" />
-          <Row label="Start date" value="13 Sep 2026" />
-          <Row label="Expiry date" value="13 Dec 2026" />
-          <Row label="Plan amount" value="₹3,000" />
+          <Row label="Plan" value={plan?.name ?? 'No plan'} />
+          <Row
+            label="Start date"
+            value={membership ? formatDate(membership.startDate) : '-'}
+          />
+          <Row
+            label="Expiry date"
+            value={membership ? formatDate(membership.endDate) : '-'}
+          />
+          <Row
+            label="Amount"
+            value={membership ? `₹${membership.amount.toLocaleString('en-IN')}` : '-'}
+          />
         </Section>
+
+        <Section title="Fee Status">
+  <Row
+    label="Membership amount"
+    value={
+      feeStatus
+        ? `₹${feeStatus.membershipAmount.toLocaleString('en-IN')}`
+        : '-'
+    }
+  />
+
+  <Row
+    label="Total paid"
+    value={
+      feeStatus
+        ? `₹${feeStatus.totalPaid.toLocaleString('en-IN')}`
+        : '-'
+    }
+  />
+
+  <Row
+    label="Remaining"
+    value={
+      feeStatus
+        ? `₹${feeStatus.remainingAmount.toLocaleString('en-IN')}`
+        : '-'
+    }
+  />
+
+  <Row
+    label="Status"
+    value={feeStatus?.status ?? '-'}
+  />
+</Section>
 
         <Section title="Contact">
-          <Row label="Phone" value="+91 98765 43210" />
-          <Row label="Email" value="rahul@example.com" />
-          <Row label="Date of birth" value="24 March 1998" />
-        </Section>
-
-        <Section title="Payments">
-          <Row label="Total" value="₹3,000" />
-          <Row label="Paid" value="₹2,000" />
-          <Row label="Balance" value="₹1,000" />
+          <Row label="Phone" value={member.phone} />
+          <Row label="Email" value={member.email ?? '-'} />
+          <Row label="Date of birth" value={member.dateOfBirth ?? '-'} />
         </Section>
 
         <View style={styles.actions}>
-          <Pressable
-            style={styles.primary}
-            onPress={() => Alert.alert('Coming next', 'Payment recording will be connected to SQLite next.')}>
-            <Text style={styles.primaryText}>Record Payment</Text>
-          </Pressable>
+          {member.status === 'active' ? (
+            <Pressable style={styles.secondaryDanger} onPress={disable}>
+              <Text style={styles.dangerText}>Disable Member</Text>
+            </Pressable>
+          ) : (
+            <Pressable style={styles.primary} onPress={enable}>
+              <Text style={styles.primaryText}>Enable Member</Text>
+            </Pressable>
+          )}
 
-          <Pressable style={styles.secondary} onPress={disable}>
-            <Text style={styles.secondaryText}>Disable Member</Text>
+          <Pressable
+            style={styles.secondary}
+            onPress={() => navigation.navigate('Payments', {
+  memberId: member.id,
+  memberName: `${member.firstName} ${member.lastName ?? ''}`.trim(),
+})}>
+            <Text style={styles.secondaryText}>Payments</Text>
           </Pressable>
+          <Pressable
+  style={styles.secondary}
+  onPress={() =>
+    navigation.navigate('RenewMembership', {
+      memberId: member.id,
+      memberName: `${member.firstName} ${member.lastName ?? ''}`.trim(),
+    })
+  }>
+  <Text style={styles.secondaryText}>Renew Membership</Text>
+</Pressable>
         </View>
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
 }
 
 function Section({title, children}: {title: string; children: React.ReactNode}) {
@@ -103,14 +268,16 @@ const styles = StyleSheet.create({
   avatarText: {fontSize: 30, fontWeight: '800', color: '#374151'},
   name: {fontSize: 22, fontWeight: '800', marginTop: 12, color: '#111827'},
   phone: {marginTop: 4, color: '#6B7280'},
-  activeBadge: {
+  memberNumber: {marginTop: 4, color: '#9CA3AF', fontSize: 12},
+  badge: {
     marginTop: 10,
-    backgroundColor: '#DCFCE7',
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 5,
   },
-  activeText: {fontSize: 11, fontWeight: '800', color: '#166534'},
+  activeBadge: {backgroundColor: '#DCFCE7'},
+  disabledBadge: {backgroundColor: '#F3F4F6'},
+  badgeText: {fontSize: 11, fontWeight: '800', color: '#374151'},
   section: {marginTop: 20},
   sectionTitle: {fontSize: 17, fontWeight: '800', marginBottom: 10, color: '#111827'},
   sectionCard: {backgroundColor: '#FFFFFF', borderRadius: 16, paddingHorizontal: 16},
@@ -139,5 +306,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  secondaryText: {color: '#B91C1C', fontWeight: '800'},
+  secondaryText: {color: '#111827', fontWeight: '800'},
+  secondaryDanger: {
+    height: 52,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dangerText: {color: '#B91C1C', fontWeight: '800'},
+  empty: {padding: 20},
+  phoneRow: {
+  marginTop: 6,
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+},
+
+callIcon: {
+  fontSize: 20,
+  color: '#111827',
+},
 });

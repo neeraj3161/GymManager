@@ -1,9 +1,4 @@
-export type PaymentMethod =
-  | 'cash'
-  | 'upi'
-  | 'card'
-  | 'bank'
-  | 'other';
+export type PaymentMethod = 'cash' | 'upi' | 'card' | 'bank' | 'other';
 
 export interface Payment {
   id: string;

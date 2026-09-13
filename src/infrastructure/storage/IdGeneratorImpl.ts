@@ -2,8 +2,10 @@ import {IdGenerator} from '../../application/shared/IdGenerator';
 
 export class IdGeneratorImpl implements IdGenerator {
   generate(): string {
-    return `${Date.now()}-${Math.random()
+    return `${Date.now().toString(36)}-${Math.random()
       .toString(36)
-      .slice(2, 11)}`;
+      .substring(2, 14)}-${Math.random()
+      .toString(36)
+      .substring(2, 14)}`;
   }
 }

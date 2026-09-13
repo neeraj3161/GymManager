@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useCallback, useState} from 'react';
 import {
   Alert,
   Pressable,
@@ -8,39 +8,57 @@ import {
   Text,
   View,
 } from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 
-const plans = [
-  {name: '1 Month', months: 1, amount: '₹1,200'},
-  {name: '3 Months', months: 3, amount: '₹3,000'},
-  {name: '6 Months', months: 6, amount: '₹5,500'},
-  {name: '1 Year', months: 12, amount: '₹9,500'},
-];
+import {MembershipPlan} from '../../../domain/entities/MembershipPlan';
+import {container} from '../../../di/container';
 
 export function PlansScreen() {
+  const [plans, setPlans] = useState<MembershipPlan[]>([]);
+
+  const load = useCallback(async () => {
+    setPlans(await container.useCases.getPlans.execute());
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.headingRow}>
           <View>
             <Text style={styles.title}>Membership Plans</Text>
-            <Text style={styles.subtitle}>Create and manage gym plans.</Text>
+            <Text style={styles.subtitle}>Plans are stored locally in SQLite.</Text>
           </View>
           <Pressable
             style={styles.add}
-            onPress={() => Alert.alert('Create plan', 'Plan creation will be connected to SQLite next.')}>
+            onPress={() =>
+              Alert.alert('Next step', 'Plan creation and editing will be connected next.')
+            }>
             <Text style={styles.addText}>+ Add</Text>
           </Pressable>
         </View>
 
         {plans.map(plan => (
-          <View style={styles.card} key={plan.name}>
+          <View style={styles.card} key={plan.id}>
             <View>
               <Text style={styles.name}>{plan.name}</Text>
-              <Text style={styles.duration}>{plan.months} month{plan.months > 1 ? 's' : ''}</Text>
+              <Text style={styles.duration}>
+                {plan.durationMonths} month{plan.durationMonths > 1 ? 's' : ''}
+              </Text>
             </View>
             <View style={styles.right}>
-              <Text style={styles.amount}>{plan.amount}</Text>
-              <Pressable onPress={() => Alert.alert('Edit plan', `Edit ${plan.name}`)}>
+              <Text style={styles.amount}>
+                ₹{plan.amount.toLocaleString('en-IN')}
+              </Text>
+              <Pressable
+                onPress={() =>
+                  Alert.alert('Next step', `Editing ${plan.name} will be connected next.`)
+                }>
                 <Text style={styles.edit}>Edit</Text>
               </Pressable>
             </View>

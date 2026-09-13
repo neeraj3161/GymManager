@@ -1,4 +1,4 @@
-import React, {useMemo, useState} from 'react';
+import React, {useCallback, useState} from 'react';
 import {
   FlatList,
   Pressable,
@@ -8,31 +8,37 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import {useNavigation} from '@react-navigation/native';
+import {useFocusEffect, useNavigation} from '@react-navigation/native';
 
-const demoMembers = [
-  {id: '1', name: 'Rahul Sharma', phone: '9876543210', plan: '3 Months', status: 'Active'},
-  {id: '2', name: 'Amit Patil', phone: '9822334455', plan: '1 Month', status: 'Due'},
-  {id: '3', name: 'Sneha Kulkarni', phone: '9765432109', plan: '1 Year', status: 'Active'},
-  {id: '4', name: 'Rohan Deshmukh', phone: '9898989898', plan: '6 Months', status: 'Expired'},
-];
+import {Member} from '../../../domain/entities/Member';
+import {container} from '../../../di/container';
 
 export function MembersScreen() {
   const navigation = useNavigation<any>();
+  const [members, setMembers] = useState<Member[]>([]);
   const [query, setQuery] = useState('');
 
-  const filtered = useMemo(
-    () =>
-      demoMembers.filter(member =>
-        member.name.toLowerCase().includes(query.toLowerCase()),
-      ),
-    [query],
+  const loadMembers = useCallback(async () => {
+    const data = await container.repositories.member.getAll();
+    setMembers(data);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadMembers();
+    }, [loadMembers]),
+  );
+
+  const filtered = members.filter(member =>
+    `${member.firstName} ${member.lastName ?? ''} ${member.phone} ${member.memberNumber}`
+      .toLowerCase()
+      .includes(query.toLowerCase()),
   );
 
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.headerRow}>
-        <Text style={styles.count}>{demoMembers.length} members</Text>
+        <Text style={styles.count}>{members.length} members</Text>
         <Pressable
           style={styles.addButton}
           onPress={() => navigation.navigate('AddMember')}>
@@ -58,30 +64,30 @@ export function MembersScreen() {
               navigation.navigate('MemberDetails', {memberId: item.id})
             }>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{item.name.charAt(0)}</Text>
+              <Text style={styles.avatarText}>{item.firstName.charAt(0)}</Text>
             </View>
-
             <View style={styles.info}>
-              <Text style={styles.name}>{item.name}</Text>
+              <Text style={styles.name}>
+                {item.firstName} {item.lastName ?? ''}
+              </Text>
               <Text style={styles.phone}>{item.phone}</Text>
-              <Text style={styles.plan}>{item.plan}</Text>
+              <Text style={styles.plan}>{item.memberNumber}</Text>
             </View>
-
             <View
               style={[
                 styles.status,
-                item.status === 'Active'
-                  ? styles.active
-                  : item.status === 'Due'
-                    ? styles.due
-                    : styles.expired,
+                item.status === 'active' ? styles.active : styles.disabled,
               ]}>
-              <Text style={styles.statusText}>{item.status}</Text>
+              <Text style={styles.statusText}>
+                {item.status === 'active' ? 'Active' : 'Disabled'}
+              </Text>
             </View>
           </Pressable>
         )}
         ListEmptyComponent={
-          <Text style={styles.empty}>No members found.</Text>
+          <Text style={styles.empty}>
+            {query ? 'No matching members.' : 'No members yet. Add your first member.'}
+          </Text>
         }
       />
     </SafeAreaView>
@@ -137,8 +143,7 @@ const styles = StyleSheet.create({
   plan: {marginTop: 3, color: '#4B5563', fontSize: 12},
   status: {paddingHorizontal: 9, paddingVertical: 6, borderRadius: 10},
   active: {backgroundColor: '#DCFCE7'},
-  due: {backgroundColor: '#FEF3C7'},
-  expired: {backgroundColor: '#FEE2E2'},
+  disabled: {backgroundColor: '#F3F4F6'},
   statusText: {fontSize: 11, fontWeight: '800', color: '#374151'},
-  empty: {textAlign: 'center', color: '#6B7280', marginTop: 40},
+  empty: {textAlign: 'center', color: '#6B7280', marginTop: 40, padding: 20},
 });
