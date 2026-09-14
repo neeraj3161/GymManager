@@ -1,4 +1,4 @@
-import React, {useEffect, useState} from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   FlatList,
@@ -10,8 +10,9 @@ import {
   View,
 } from 'react-native';
 
-import {container} from '../../../di/container';
-import {Payment, PaymentMethod} from '../../../domain/entities/Payment';
+import { container } from '../../../di/container';
+import { Payment, PaymentMethod } from '../../../domain/entities/Payment';
+import { Membership } from '../../../domain/entities/Membership';
 
 interface PaymentsScreenProps {
   route: {
@@ -22,32 +23,39 @@ interface PaymentsScreenProps {
   };
 }
 
-export default function PaymentsScreen({
-  route,
-}: PaymentsScreenProps) {
-  const {memberId, memberName} = route.params;
+export default function PaymentsScreen({ route }: PaymentsScreenProps) {
+  const { memberId, memberName } = route.params;
 
   const [payments, setPayments] = useState<Payment[]>([]);
   const [totalPaid, setTotalPaid] = useState(0);
 
   const [amount, setAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] =
-    useState<PaymentMethod>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [notes, setNotes] = useState('');
+  const [membership, setMembership] = useState<Membership | null>(null);
+
+  const formatDate = (date: string) =>
+    new Date(date).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    });
 
   const loadPayments = async () => {
     try {
-      const [history, total] = await Promise.all([
+      const [paymentData, total, membershipData] = await Promise.all([
         container.useCases.getPaymentHistory.execute(memberId),
         container.useCases.getTotalPaid.execute(memberId),
+        container.repositories.membership.getByMemberId(memberId),
       ]);
 
-      setPayments(history);
+      setPayments(paymentData);
       setTotalPaid(total);
+      setMembership(membershipData);
     } catch (error) {
       Alert.alert(
         'Error',
-        'Unable to load payment information.',
+        error instanceof Error ? error.message : 'Unable to load payments.',
       );
     }
   };
@@ -68,14 +76,26 @@ export default function PaymentsScreen({
     }
 
     try {
+      const membership = await container.repositories.membership.getByMemberId(
+        memberId,
+      );
+
+      if (!membership) {
+        Alert.alert(
+          'No membership',
+          'This member does not have an active membership.',
+        );
+        return;
+      }
+
       await container.useCases.recordPayment.execute({
         memberId,
+        membershipId: membership.id,
         amount: numericAmount,
         paymentMethod,
         recordedBy: 'current-user',
         notes: notes.trim() || undefined,
       });
-
       setAmount('');
       setNotes('');
 
@@ -85,14 +105,12 @@ export default function PaymentsScreen({
     } catch (error) {
       Alert.alert(
         'Error',
-        error instanceof Error
-          ? error.message
-          : 'Unable to record payment.',
+        error instanceof Error ? error.message : 'Unable to record payment.',
       );
     }
   };
 
-  const renderPayment = ({item}: {item: Payment}) => (
+  const renderPayment = ({ item }: { item: Payment }) => (
     <View style={styles.paymentCard}>
       <View>
         <Text style={styles.paymentAmount}>
@@ -109,9 +127,7 @@ export default function PaymentsScreen({
           {item.paymentMethod.toUpperCase()}
         </Text>
 
-        {item.notes ? (
-          <Text style={styles.notes}>{item.notes}</Text>
-        ) : null}
+        {item.notes ? <Text style={styles.notes}>{item.notes}</Text> : null}
       </View>
     </View>
   );
@@ -127,23 +143,36 @@ export default function PaymentsScreen({
           <View>
             <Text style={styles.title}>Payments</Text>
 
-            <Text style={styles.memberName}>
-              {memberName}
-            </Text>
+            <Text style={styles.memberName}>{memberName}</Text>
+
+            {membership && (
+              <View style={styles.membershipCard}>
+                <View>
+                  <Text style={styles.membershipLabel}>Current Membership</Text>
+
+                  <Text style={styles.membershipPlan}>Membership</Text>
+
+                  <Text style={styles.membershipDates}>
+                    {formatDate(membership.startDate)} -{' '}
+                    {formatDate(membership.endDate)}
+                  </Text>
+                </View>
+
+                <Text style={styles.membershipAmount}>
+                  ₹{membership.amount.toLocaleString('en-IN')}
+                </Text>
+              </View>
+            )}
 
             <View style={styles.summaryCard}>
-              <Text style={styles.summaryLabel}>
-                Total Paid
-              </Text>
+              <Text style={styles.summaryLabel}>Total Paid</Text>
 
               <Text style={styles.summaryAmount}>
                 ₹{totalPaid.toLocaleString('en-IN')}
               </Text>
             </View>
 
-            <Text style={styles.sectionTitle}>
-              Record Payment
-            </Text>
+            <Text style={styles.sectionTitle}>Record Payment</Text>
 
             <TextInput
               style={styles.input}
@@ -153,32 +182,30 @@ export default function PaymentsScreen({
               onChangeText={setAmount}
             />
 
-            <Text style={styles.label}>
-              Payment Method
-            </Text>
+            <Text style={styles.label}>Payment Method</Text>
 
             <View style={styles.methods}>
-              {(['cash', 'upi', 'card', 'bank', 'other'] as PaymentMethod[]).map(
-                method => (
-                  <TouchableOpacity
-                    key={method}
+              {(
+                ['cash', 'upi', 'card', 'bank', 'other'] as PaymentMethod[]
+              ).map(method => (
+                <TouchableOpacity
+                  key={method}
+                  style={[
+                    styles.methodButton,
+                    paymentMethod === method && styles.selectedMethod,
+                  ]}
+                  onPress={() => setPaymentMethod(method)}
+                >
+                  <Text
                     style={[
-                      styles.methodButton,
-                      paymentMethod === method &&
-                        styles.selectedMethod,
+                      styles.methodText,
+                      paymentMethod === method && styles.selectedMethodText,
                     ]}
-                    onPress={() => setPaymentMethod(method)}>
-                    <Text
-                      style={[
-                        styles.methodText,
-                        paymentMethod === method &&
-                          styles.selectedMethodText,
-                      ]}>
-                      {method.toUpperCase()}
-                    </Text>
-                  </TouchableOpacity>
-                ),
-              )}
+                  >
+                    {method.toUpperCase()}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
             <TextInput
@@ -191,21 +218,16 @@ export default function PaymentsScreen({
 
             <TouchableOpacity
               style={styles.recordButton}
-              onPress={handleRecordPayment}>
-              <Text style={styles.recordButtonText}>
-                Record Payment
-              </Text>
+              onPress={handleRecordPayment}
+            >
+              <Text style={styles.recordButtonText}>Record Payment</Text>
             </TouchableOpacity>
 
-            <Text style={styles.sectionTitle}>
-              Payment History
-            </Text>
+            <Text style={styles.sectionTitle}>Payment History</Text>
           </View>
         }
         ListEmptyComponent={
-          <Text style={styles.empty}>
-            No payments recorded yet.
-          </Text>
+          <Text style={styles.empty}>No payments recorded yet.</Text>
         }
       />
     </SafeAreaView>
@@ -367,5 +389,39 @@ const styles = StyleSheet.create({
     color: '#777',
     marginTop: 20,
   },
-});
+  membershipCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 16,
+    marginBottom: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
 
+  membershipLabel: {
+    fontSize: 12,
+    color: '#6B7280',
+    fontWeight: '600',
+  },
+
+  membershipPlan: {
+    marginTop: 4,
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#111827',
+  },
+
+  membershipDates: {
+    marginTop: 4,
+    fontSize: 13,
+    color: '#6B7280',
+  },
+
+  membershipAmount: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#111827',
+  },
+});

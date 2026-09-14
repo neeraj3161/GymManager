@@ -1,21 +1,23 @@
-import {SQLiteDatabase} from '../infrastructure/database/SQLiteDatabase';
-import {SQLiteMemberRepository} from '../infrastructure/database/repositories/SQLiteMemberRepository';
-import {SQLitePlanRepository} from '../infrastructure/database/repositories/SQLitePlanRepository';
-import {SQLiteMembershipRepository} from '../infrastructure/database/repositories/SQLiteMembershipRepository';
-import {AddMemberUseCase} from '../application/members/AddMember';
-import {DisableMemberUseCase} from '../application/members/DisableMember';
-import {EnableMemberUseCase} from '../application/members/EnableMember';
-import {GetMemberDetailsUseCase} from '../application/members/GetMemberDetails';
-import {CreateMembershipUseCase} from '../application/memberships/CreateMembership';
-import {GetPlansUseCase} from '../application/plans/GetPlans';
-import {GetDashboardStatsUseCase} from '../application/dashboard/GetDashboardStats';
-import {IdGeneratorImpl} from '../infrastructure/storage/IdGeneratorImpl';
+import { SQLiteDatabase } from '../infrastructure/database/SQLiteDatabase';
+import { SQLiteMemberRepository } from '../infrastructure/database/repositories/SQLiteMemberRepository';
+import { SQLitePlanRepository } from '../infrastructure/database/repositories/SQLitePlanRepository';
+import { SQLiteMembershipRepository } from '../infrastructure/database/repositories/SQLiteMembershipRepository';
+import { AddMemberUseCase } from '../application/members/AddMember';
+import { DisableMemberUseCase } from '../application/members/DisableMember';
+import { EnableMemberUseCase } from '../application/members/EnableMember';
+import { GetMemberDetailsUseCase } from '../application/members/GetMemberDetails';
+import { CreateMembershipUseCase } from '../application/memberships/CreateMembership';
+import { GetPlansUseCase } from '../application/plans/GetPlans';
+import { GetDashboardStatsUseCase } from '../application/dashboard/GetDashboardStats';
+import { IdGeneratorImpl } from '../infrastructure/storage/IdGeneratorImpl';
 import { SQLitePaymentRepository } from '../infrastructure/database/repositories/SQLitePaymentRepository';
 import { RecordPaymentUseCase } from '../application/payments/RecordPayment';
-import {GetPaymentHistoryUseCase} from '../application/payments/GetPaymentHistory';
-import {GetTotalPaidUseCase} from '../application/payments/GetTotalPaid';
-import {GetMemberFeeStatusUseCase} from '../application/payments/GetMemberFeeStatus';
-import {RenewMembershipUseCase} from '../application/memberships/RenewMembership';
+import { GetPaymentHistoryUseCase } from '../application/payments/GetPaymentHistory';
+import { GetTotalPaidUseCase } from '../application/payments/GetTotalPaid';
+import { GetMemberFeeStatusUseCase } from '../application/payments/GetMemberFeeStatus';
+import { RenewMembershipUseCase } from '../application/memberships/RenewMembership';
+import { CreatePlanUseCase } from '../application/plans/CreatePlan';
+import { UpdatePlanUseCase } from '../application/plans/UpdatePlan';
 
 const database = new SQLiteDatabase();
 const idGenerator = new IdGeneratorImpl();
@@ -46,27 +48,22 @@ export const container = {
       idGenerator,
     ),
     renewMembership: new RenewMembershipUseCase(
-  membershipRepository,
-  planRepository,
-  idGenerator,
-),
+      membershipRepository,
+      planRepository,
+      idGenerator,
+    ),
     getPlans: new GetPlansUseCase(planRepository),
     getDashboardStats: new GetDashboardStatsUseCase(database),
-    recordPayment: new RecordPaymentUseCase(
-  paymentRepository,
-  idGenerator,
-),
-getPaymentHistory: new GetPaymentHistoryUseCase(
-  paymentRepository,
-),
+    recordPayment: new RecordPaymentUseCase(paymentRepository, idGenerator),
+    getPaymentHistory: new GetPaymentHistoryUseCase(paymentRepository),
 
-getTotalPaid: new GetTotalPaidUseCase(
-  paymentRepository,
-)
-,
-  getMemberFeeStatus: new GetMemberFeeStatusUseCase(
-  paymentRepository,
-  membershipRepository,
-),
-  }
+    getTotalPaid: new GetTotalPaidUseCase(paymentRepository),
+    getMemberFeeStatus: new GetMemberFeeStatusUseCase(
+      paymentRepository,
+      membershipRepository,
+    ),
+    createPlan: new CreatePlanUseCase(planRepository, idGenerator),
+
+    updatePlan: new UpdatePlanUseCase(planRepository),
+  },
 };

@@ -1,5 +1,5 @@
-import {PaymentRepository} from '../../domain/repositories/PaymentRepository';
-import {MembershipRepository} from '../../domain/repositories/MembershipRepository';
+import { PaymentRepository } from '../../domain/repositories/PaymentRepository';
+import { MembershipRepository } from '../../domain/repositories/MembershipRepository';
 
 export type FeeStatus = 'PAID' | 'PARTIAL' | 'DUE' | 'OVERDUE';
 
@@ -17,32 +17,35 @@ export class GetMemberFeeStatusUseCase {
   ) {}
 
   async execute(memberId: string): Promise<MemberFeeStatus | null> {
-    const membership =
-      await this.membershipRepository.getByMemberId(memberId);
+    if (!memberId) {
+      throw new Error('Member ID is required');
+    }
+
+    const membership = await this.membershipRepository.getByMemberId(memberId);
 
     if (!membership) {
       return null;
     }
 
-    const totalPaid =
-      await this.paymentRepository.getTotalPaidByMember(memberId);
-
-    const remainingAmount = Math.max(
-      membership.amount - totalPaid,
-      0,
+    const totalPaid = await this.paymentRepository.getTotalPaidByMembership(
+      membership.id,
     );
+
+    const remainingAmount = Math.max(membership.amount - totalPaid, 0);
+
+    const expiryDate = new Date(membership.endDate);
+    const today = new Date();
 
     let status: FeeStatus;
 
     if (remainingAmount === 0) {
       status = 'PAID';
+    } else if (expiryDate < today) {
+      status = 'OVERDUE';
     } else if (totalPaid > 0) {
       status = 'PARTIAL';
     } else {
-      const expiryDate = new Date(membership.endDate);
-      const today = new Date();
-
-      status = expiryDate < today ? 'OVERDUE' : 'DUE';
+      status = 'DUE';
     }
 
     return {

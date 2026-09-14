@@ -1,11 +1,11 @@
-import {open} from 'react-native-nitro-sqlite';
+import { open } from 'react-native-nitro-sqlite';
 
 export interface Database {
   initialize(): Promise<void>;
   execute(query: string, params?: unknown[]): Promise<void>;
   query<T>(query: string, params?: unknown[]): Promise<T[]>;
   executeBatch(
-    commands: Array<{query: string; params?: unknown[]}>,
+    commands: Array<{ query: string; params?: unknown[] }>,
   ): Promise<void>;
 }
 
@@ -106,17 +106,26 @@ export class SQLiteDatabase implements Database {
       },
       {
         query: `
-          CREATE TABLE IF NOT EXISTS payments (
-            id TEXT PRIMARY KEY,
-            member_id TEXT NOT NULL,
-            amount REAL NOT NULL,
-            payment_date TEXT NOT NULL,
-            payment_method TEXT NOT NULL,
-            notes TEXT,
-            recorded_by TEXT NOT NULL,
-            created_at TEXT NOT NULL
-          )
-        `,
+    CREATE TABLE IF NOT EXISTS payments (
+      id TEXT PRIMARY KEY,
+      member_id TEXT NOT NULL,
+      membership_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      payment_date TEXT NOT NULL,
+      payment_method TEXT NOT NULL,
+      notes TEXT,
+      recorded_by TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+
+      FOREIGN KEY(member_id)
+        REFERENCES members(id)
+        ON DELETE CASCADE,
+
+      FOREIGN KEY(membership_id)
+        REFERENCES memberships(id)
+        ON DELETE CASCADE
+    )
+  `,
       },
       {
         query: `
@@ -183,6 +192,10 @@ export class SQLiteDatabase implements Database {
       {
         query:
           'CREATE INDEX IF NOT EXISTS idx_payments_member ON payments(member_id)',
+      },
+      {
+        query:
+          'CREATE INDEX IF NOT EXISTS idx_payments_membership ON payments(membership_id)',
       },
       {
         query:
@@ -273,27 +286,18 @@ export class SQLiteDatabase implements Database {
     this.initialized = true;
   }
 
-  async execute(
-    query: string,
-    params: unknown[] = [],
-  ): Promise<void> {
+  async execute(query: string, params: unknown[] = []): Promise<void> {
     await db.executeAsync(query, params as any[]);
   }
 
-  async query<T>(
-    query: string,
-    params: unknown[] = [],
-  ): Promise<T[]> {
-    const result = await db.executeAsync(
-      query,
-      params as any[],
-    );
+  async query<T>(query: string, params: unknown[] = []): Promise<T[]> {
+    const result = await db.executeAsync(query, params as any[]);
 
     return result.rows?._array as T[];
   }
 
   async executeBatch(
-    commands: Array<{query: string; params?: unknown[]}>,
+    commands: Array<{ query: string; params?: unknown[] }>,
   ): Promise<void> {
     await db.executeBatchAsync(
       commands.map(command => ({

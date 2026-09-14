@@ -1,6 +1,6 @@
-import {PlanRepository} from '../../../domain/repositories/PlanRepository';
-import {MembershipPlan} from '../../../domain/entities/MembershipPlan';
-import {Database} from '../SQLiteDatabase';
+import { PlanRepository } from '../../../domain/repositories/PlanRepository';
+import { MembershipPlan } from '../../../domain/entities/MembershipPlan';
+import { Database } from '../SQLiteDatabase';
 
 type PlanRow = {
   id: string;

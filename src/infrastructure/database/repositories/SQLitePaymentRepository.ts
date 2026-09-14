@@ -1,10 +1,11 @@
-import {Payment} from '../../../domain/entities/Payment';
-import {PaymentRepository} from '../../../domain/repositories/PaymentRepository';
-import {SQLiteDatabase} from '../SQLiteDatabase';
+import { Payment } from '../../../domain/entities/Payment';
+import { PaymentRepository } from '../../../domain/repositories/PaymentRepository';
+import { SQLiteDatabase } from '../SQLiteDatabase';
 
 interface PaymentRow {
   id: string;
   member_id: string;
+  membership_id: string;
   amount: number;
   payment_date: string;
   payment_method: Payment['paymentMethod'];
@@ -22,6 +23,7 @@ export class SQLitePaymentRepository implements PaymentRepository {
       INSERT INTO payments (
         id,
         member_id,
+        membership_id,
         amount,
         payment_date,
         payment_method,
@@ -29,11 +31,12 @@ export class SQLitePaymentRepository implements PaymentRepository {
         recorded_by,
         created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         payment.id,
         payment.memberId,
+        payment.membershipId,
         payment.amount,
         payment.paymentDate,
         payment.paymentMethod,
@@ -50,6 +53,7 @@ export class SQLitePaymentRepository implements PaymentRepository {
       SELECT
         id,
         member_id,
+        membership_id,
         amount,
         payment_date,
         payment_method,
@@ -67,7 +71,7 @@ export class SQLitePaymentRepository implements PaymentRepository {
   }
 
   async getTotalPaidByMember(memberId: string): Promise<number> {
-    const rows = await this.db.query<{total: number | null}>(
+    const rows = await this.db.query<{ total: number | null }>(
       `
       SELECT COALESCE(SUM(amount), 0) AS total
       FROM payments
@@ -79,10 +83,24 @@ export class SQLitePaymentRepository implements PaymentRepository {
     return rows[0]?.total ?? 0;
   }
 
+  async getTotalPaidByMembership(membershipId: string): Promise<number> {
+    const rows = await this.db.query<{ total: number | null }>(
+      `
+      SELECT COALESCE(SUM(amount), 0) AS total
+      FROM payments
+      WHERE membership_id = ?
+      `,
+      [membershipId],
+    );
+
+    return rows[0]?.total ?? 0;
+  }
+
   private toDomain(row: PaymentRow): Payment {
     return {
       id: row.id,
       memberId: row.member_id,
+      membershipId: row.membership_id,
       amount: row.amount,
       paymentDate: row.payment_date,
       paymentMethod: row.payment_method,

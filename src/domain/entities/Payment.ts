@@ -3,6 +3,7 @@ export type PaymentMethod = 'cash' | 'upi' | 'card' | 'bank' | 'other';
 export interface Payment {
   id: string;
   memberId: string;
+  membershipId: string;
   amount: number;
   paymentDate: string;
   paymentMethod: PaymentMethod;
