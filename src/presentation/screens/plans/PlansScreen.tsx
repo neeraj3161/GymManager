@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Modal,
   Pressable,
@@ -26,6 +27,7 @@ export function PlansScreen() {
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
 
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -37,6 +39,8 @@ export function PlansScreen() {
         'Error',
         error instanceof Error ? error.message : 'Unable to load plans.',
       );
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -77,6 +81,24 @@ export function PlansScreen() {
     const durationMonths = Number(duration);
     const planAmount = Number(amount);
 
+    if (!name.trim()) {
+      Alert.alert('Invalid plan', 'Plan name is required.');
+      return;
+    }
+
+    if (!Number.isInteger(durationMonths) || durationMonths <= 0) {
+      Alert.alert(
+        'Invalid duration',
+        'Duration must be a positive number of months.',
+      );
+      return;
+    }
+
+    if (!Number.isFinite(planAmount) || planAmount < 0) {
+      Alert.alert('Invalid amount', 'Enter a valid plan amount.');
+      return;
+    }
+
     try {
       setSaving(true);
 
@@ -115,25 +137,51 @@ export function PlansScreen() {
     }
   };
 
-  const togglePlan = async (plan: MembershipPlan) => {
-    try {
-      await container.useCases.updatePlan.execute({
-        id: plan.id,
-        name: plan.name,
-        durationMonths: plan.durationMonths,
-        amount: plan.amount,
-        description: plan.description,
-        // We will handle active/inactive separately below.
-      });
+  const togglePlan = (plan: MembershipPlan) => {
+    const action = plan.active ? 'disable' : 'enable';
 
-      Alert.alert('Info', 'Plan activation/deactivation will be added next.');
-    } catch (error) {
-      Alert.alert(
-        'Error',
-        error instanceof Error ? error.message : 'Unable to update plan.',
-      );
-    }
+    Alert.alert(
+      `${plan.active ? 'Disable' : 'Enable'} plan`,
+      plan.active
+        ? `"${plan.name}" will no longer be available for new memberships. Existing memberships will not be affected.`
+        : `"${plan.name}" will become available for new memberships.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: plan.active ? 'Disable' : 'Enable',
+          style: plan.active ? 'destructive' : 'default',
+          onPress: async () => {
+            try {
+              await container.useCases.togglePlanStatus.execute(plan.id);
+
+              await load();
+            } catch (error) {
+              Alert.alert(
+                `Unable to ${action} plan`,
+                error instanceof Error
+                  ? error.message
+                  : 'Something went wrong.',
+              );
+            }
+          },
+        },
+      ],
+    );
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" />
+          <Text style={styles.loadingText}>Loading membership plans...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -141,6 +189,7 @@ export function PlansScreen() {
         <View style={styles.headingRow}>
           <View style={styles.heading}>
             <Text style={styles.title}>Membership Plans</Text>
+
             <Text style={styles.subtitle}>
               Create and manage your gym plans.
             </Text>
@@ -154,13 +203,17 @@ export function PlansScreen() {
         {plans.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyTitle}>No membership plans</Text>
+
             <Text style={styles.emptyText}>
               Create your first membership plan.
             </Text>
           </View>
         ) : (
           plans.map(plan => (
-            <View style={styles.card} key={plan.id}>
+            <View
+              style={[styles.card, !plan.active && styles.inactiveCard]}
+              key={plan.id}
+            >
               <View style={styles.cardMain}>
                 <View style={styles.nameRow}>
                   <Text style={styles.name}>{plan.name}</Text>
@@ -232,6 +285,7 @@ export function PlansScreen() {
             </Text>
 
             <Text style={styles.label}>Plan name</Text>
+
             <TextInput
               style={styles.input}
               value={name}
@@ -239,9 +293,11 @@ export function PlansScreen() {
               placeholder="e.g. Monthly"
               placeholderTextColor="#9CA3AF"
               autoCapitalize="words"
+              editable={!saving}
             />
 
             <Text style={styles.label}>Duration (months)</Text>
+
             <TextInput
               style={styles.input}
               value={duration}
@@ -249,9 +305,11 @@ export function PlansScreen() {
               placeholder="e.g. 1"
               placeholderTextColor="#9CA3AF"
               keyboardType="number-pad"
+              editable={!saving}
             />
 
             <Text style={styles.label}>Amount</Text>
+
             <TextInput
               style={styles.input}
               value={amount}
@@ -259,9 +317,11 @@ export function PlansScreen() {
               placeholder="e.g. 1200"
               placeholderTextColor="#9CA3AF"
               keyboardType="decimal-pad"
+              editable={!saving}
             />
 
             <Text style={styles.label}>Description</Text>
+
             <TextInput
               style={[styles.input, styles.descriptionInput]}
               value={description}
@@ -269,6 +329,7 @@ export function PlansScreen() {
               placeholder="Optional"
               placeholderTextColor="#9CA3AF"
               multiline
+              editable={!saving}
             />
 
             <View style={styles.modalActions}>
@@ -285,9 +346,11 @@ export function PlansScreen() {
                 onPress={savePlan}
                 disabled={saving}
               >
-                <Text style={styles.saveText}>
-                  {saving ? 'Saving...' : 'Save'}
-                </Text>
+                {saving ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.saveText}>Save</Text>
+                )}
               </Pressable>
             </View>
           </View>
@@ -305,6 +368,18 @@ const styles = StyleSheet.create({
 
   container: {
     padding: 16,
+    paddingBottom: 40,
+  },
+
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  loadingText: {
+    marginTop: 12,
+    color: '#6B7280',
   },
 
   headingRow: {
@@ -350,6 +425,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+
+  inactiveCard: {
+    opacity: 0.75,
   },
 
   cardMain: {
@@ -525,10 +604,13 @@ const styles = StyleSheet.create({
   },
 
   saveButton: {
+    minWidth: 75,
     backgroundColor: '#111827',
     borderRadius: 10,
     paddingHorizontal: 20,
     paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   saveText: {

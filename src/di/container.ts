@@ -1,26 +1,52 @@
 import { SQLiteDatabase } from '../infrastructure/database/SQLiteDatabase';
 
+// --------------------------------------------------
+// Repositories
+// --------------------------------------------------
+
 import { SQLiteMemberRepository } from '../infrastructure/database/repositories/SQLiteMemberRepository';
 import { SQLitePlanRepository } from '../infrastructure/database/repositories/SQLitePlanRepository';
 import { SQLiteMembershipRepository } from '../infrastructure/database/repositories/SQLiteMembershipRepository';
 import { SQLitePaymentRepository } from '../infrastructure/database/repositories/SQLitePaymentRepository';
 import { SQLiteMembershipAdjustmentRepository } from '../infrastructure/database/repositories/SQLiteMembershipAdjustmentRepository';
+import { SQLiteUserRepository } from '../infrastructure/database/repositories/SQLiteUserRepository';
+
+// --------------------------------------------------
+// Members
+// --------------------------------------------------
 
 import { AddMemberUseCase } from '../application/members/AddMember';
 import { DisableMemberUseCase } from '../application/members/DisableMember';
 import { EnableMemberUseCase } from '../application/members/EnableMember';
 import { GetMemberDetailsUseCase } from '../application/members/GetMemberDetails';
 
+// --------------------------------------------------
+// Memberships
+// --------------------------------------------------
+
 import { CreateMembershipUseCase } from '../application/memberships/CreateMembership';
 import { RenewMembershipUseCase } from '../application/memberships/RenewMembership';
 import { ChangeMembershipPlanUseCase } from '../application/memberships/ChangeMembershipPlan';
 import { ProcessMembershipTransitionUseCase } from '../application/memberships/ProcessMembershipTransition';
 
+// --------------------------------------------------
+// Plans
+// --------------------------------------------------
+
 import { GetPlansUseCase } from '../application/plans/GetPlans';
 import { CreatePlanUseCase } from '../application/plans/CreatePlan';
 import { UpdatePlanUseCase } from '../application/plans/UpdatePlan';
+import { TogglePlanStatusUseCase } from '../application/plans/TogglePlanStatus';
+
+// --------------------------------------------------
+// Dashboard
+// --------------------------------------------------
 
 import { GetDashboardStatsUseCase } from '../application/dashboard/GetDashboardStats';
+
+// --------------------------------------------------
+// Payments
+// --------------------------------------------------
 
 import { RecordPaymentUseCase } from '../application/payments/RecordPayment';
 import { GetPaymentHistoryUseCase } from '../application/payments/GetPaymentHistory';
@@ -30,12 +56,32 @@ import { WriteOffMembershipDueUseCase } from '../application/payments/WriteOffMe
 import { CarryForwardMembershipDueUseCase } from '../application/payments/CarryForwardMembershipDue';
 import { GetMembershipDueUseCase } from '../application/payments/GetMembershipDue';
 
-import { IdGeneratorImpl } from '../infrastructure/storage/IdGeneratorImpl';
-import { SQLiteUserRepository } from '../infrastructure/database/repositories/SQLiteUserRepository';
-import { BcryptPasswordHasher } from '../infrastructure/auth/BcryptPasswordHasher';
+// --------------------------------------------------
+// Birthdays
+// --------------------------------------------------
+
+import { GetUpcomingBirthdaysUseCase } from '../application/birthdays/GetUpcomingBirthdays';
+
+// --------------------------------------------------
+// Auth
+// --------------------------------------------------
+
 import { LoginUseCase } from '../application/auth/Login';
 import { CreateOwnerUseCase } from '../application/auth/CreateOwner';
 
+// --------------------------------------------------
+// Infrastructure Services
+// --------------------------------------------------
+
+import { IdGeneratorImpl } from '../infrastructure/storage/IdGeneratorImpl';
+import { BcryptPasswordHasher } from '../infrastructure/auth/BcryptPasswordHasher';
+
+// --------------------------------------------------
+// Gym Repository
+// --------------------------------------------------
+import { SQLiteGymRepository } from '../infrastructure/database/repositories/SQLiteGymRepository';
+import { GetGymProfileUseCase } from '../application/gym/GetGymProfile';
+import { UpdateGymProfileUseCase } from '../application/gym/UpdateGymProfile';
 // --------------------------------------------------
 // Infrastructure
 // --------------------------------------------------
@@ -43,6 +89,8 @@ import { CreateOwnerUseCase } from '../application/auth/CreateOwner';
 const database = new SQLiteDatabase();
 
 const idGenerator = new IdGeneratorImpl();
+
+const passwordHasher = new BcryptPasswordHasher();
 
 // --------------------------------------------------
 // Repositories
@@ -62,11 +110,17 @@ const membershipAdjustmentRepository = new SQLiteMembershipAdjustmentRepository(
 
 const userRepository = new SQLiteUserRepository(database);
 
-const passwordHasher = new BcryptPasswordHasher();
+const gymRepository = new SQLiteGymRepository(database);
 
 // --------------------------------------------------
 // Membership Use Cases
 // --------------------------------------------------
+
+const createMembershipUseCase = new CreateMembershipUseCase(
+  membershipRepository,
+  planRepository,
+  idGenerator,
+);
 
 const renewMembershipUseCase = new RenewMembershipUseCase(
   membershipRepository,
@@ -117,6 +171,26 @@ const processMembershipTransitionUseCase =
   );
 
 // --------------------------------------------------
+// Auth Use Cases
+// --------------------------------------------------
+
+const loginUseCase = new LoginUseCase(userRepository, passwordHasher);
+
+const createOwnerUseCase = new CreateOwnerUseCase(
+  userRepository,
+  passwordHasher,
+  idGenerator,
+);
+
+// --------------------------------------------------
+// Birthday Use Case
+// --------------------------------------------------
+
+const getUpcomingBirthdaysUseCase = new GetUpcomingBirthdaysUseCase(
+  memberRepository,
+);
+
+// --------------------------------------------------
 // Container
 // --------------------------------------------------
 
@@ -130,10 +204,14 @@ export const container = {
     payment: paymentRepository,
     membershipAdjustment: membershipAdjustmentRepository,
     user: userRepository,
+    gym: gymRepository,
   },
 
   useCases: {
+    // ----------------------------------------------
     // Members
+    // ----------------------------------------------
+
     addMember: new AddMemberUseCase(memberRepository, idGenerator),
 
     disableMember: new DisableMemberUseCase(memberRepository),
@@ -142,12 +220,11 @@ export const container = {
 
     getMemberDetails: new GetMemberDetailsUseCase(memberRepository),
 
+    // ----------------------------------------------
     // Memberships
-    createMembership: new CreateMembershipUseCase(
-      membershipRepository,
-      planRepository,
-      idGenerator,
-    ),
+    // ----------------------------------------------
+
+    createMembership: createMembershipUseCase,
 
     renewMembership: renewMembershipUseCase,
 
@@ -155,24 +232,38 @@ export const container = {
 
     processMembershipTransition: processMembershipTransitionUseCase,
 
+    // ----------------------------------------------
     // Plans
+    // ----------------------------------------------
+
     getPlans: new GetPlansUseCase(planRepository),
 
     createPlan: new CreatePlanUseCase(planRepository, idGenerator),
 
     updatePlan: new UpdatePlanUseCase(planRepository),
 
+    togglePlanStatus: new TogglePlanStatusUseCase(planRepository),
+
+    // ----------------------------------------------
     // Dashboard
+    // ----------------------------------------------
+
     getDashboardStats: new GetDashboardStatsUseCase(database),
 
+    // ----------------------------------------------
     // Payments
+    // ----------------------------------------------
+
     recordPayment: recordPaymentUseCase,
 
     getPaymentHistory: new GetPaymentHistoryUseCase(paymentRepository),
 
     getTotalPaid: new GetTotalPaidUseCase(paymentRepository),
 
+    // ----------------------------------------------
     // Due
+    // ----------------------------------------------
+
     writeOffMembershipDue: writeOffMembershipDueUseCase,
 
     carryForwardMembershipDue: carryForwardMembershipDueUseCase,
@@ -189,12 +280,26 @@ export const container = {
       membershipAdjustmentRepository,
     ),
 
-    //Login
-    login: new LoginUseCase(userRepository, passwordHasher),
-    createOwner: new CreateOwnerUseCase(
-      userRepository,
-      passwordHasher,
-      idGenerator,
-    ),
+    // ----------------------------------------------
+    // Birthdays
+    // ----------------------------------------------
+
+    getUpcomingBirthdays: getUpcomingBirthdaysUseCase,
+
+    // ----------------------------------------------
+    // Authentication
+    // ----------------------------------------------
+
+    login: loginUseCase,
+
+    createOwner: createOwnerUseCase,
+
+    // ----------------------------------------------
+    // Gym Profile
+    // ----------------------------------------------
+
+    getGymProfile: new GetGymProfileUseCase(gymRepository),
+
+    updateGymProfile: new UpdateGymProfileUseCase(gymRepository),
   },
 };
