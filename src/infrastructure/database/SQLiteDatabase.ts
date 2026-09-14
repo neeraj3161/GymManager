@@ -41,7 +41,7 @@ export class SQLiteDatabase implements Database {
 
     /*
      * IMPORTANT:
-     * Tables are created in dependency order.
+     * Tables are created before any seed data is inserted.
      *
      * members
      *    ↓
@@ -172,28 +172,29 @@ export class SQLiteDatabase implements Database {
           )
         `,
       },
+
       {
         query: `
-    CREATE TABLE IF NOT EXISTS membership_adjustments (
-      id TEXT PRIMARY KEY,
-      membership_id TEXT NOT NULL,
-      member_id TEXT NOT NULL,
-      type TEXT NOT NULL,
-      amount REAL NOT NULL,
-      reason TEXT,
-      notes TEXT,
-      created_by TEXT NOT NULL,
-      created_at TEXT NOT NULL,
+          CREATE TABLE IF NOT EXISTS membership_adjustments (
+            id TEXT PRIMARY KEY,
+            membership_id TEXT NOT NULL,
+            member_id TEXT NOT NULL,
+            type TEXT NOT NULL,
+            amount REAL NOT NULL,
+            reason TEXT,
+            notes TEXT,
+            created_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
 
-      FOREIGN KEY(membership_id)
-        REFERENCES memberships(id)
-        ON DELETE CASCADE,
+            FOREIGN KEY(membership_id)
+              REFERENCES memberships(id)
+              ON DELETE CASCADE,
 
-      FOREIGN KEY(member_id)
-        REFERENCES members(id)
-        ON DELETE CASCADE
-    )
-  `,
+            FOREIGN KEY(member_id)
+              REFERENCES members(id)
+              ON DELETE CASCADE
+          )
+        `,
       },
 
       {
@@ -283,6 +284,7 @@ export class SQLiteDatabase implements Database {
         query:
           'CREATE INDEX IF NOT EXISTS idx_reminders_date ON reminders(scheduled_at)',
       },
+
       {
         query:
           'CREATE INDEX IF NOT EXISTS idx_adjustments_membership ON membership_adjustments(membership_id)',
@@ -291,12 +293,28 @@ export class SQLiteDatabase implements Database {
 
     const now = new Date().toISOString();
 
+    /*
+     * Default gym
+     */
+
     await db.executeAsync(
-      `INSERT OR IGNORE INTO gym
-       (id, name, currency, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?)`,
+      `
+        INSERT OR IGNORE INTO gym
+        (
+          id,
+          name,
+          currency,
+          created_at,
+          updated_at
+        )
+        VALUES (?, ?, ?, ?, ?)
+      `,
       ['default-gym', 'My Gym', 'INR', now, now],
     );
+
+    /*
+     * Default membership plans
+     */
 
     await db.executeBatchAsync([
       {
@@ -401,6 +419,115 @@ export class SQLiteDatabase implements Database {
           12,
           9500,
           'Annual membership',
+          1,
+          now,
+          now,
+        ],
+      },
+    ]);
+
+    /*
+     * Default SMS templates
+     *
+     * INSERT OR IGNORE means existing user-edited
+     * templates will NOT be overwritten.
+     */
+
+    await db.executeBatchAsync([
+      {
+        query: `
+          INSERT OR IGNORE INTO sms_templates
+          (
+            id,
+            type,
+            name,
+            content,
+            enabled,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+        params: [
+          'sms-birthday-default',
+          'birthday',
+          'Birthday Wish',
+          'Happy Birthday {{member_name}}! {{gym_name}} wishes you a very Happy Birthday. We wish you good health, happiness and success. Thank you for being a valued member of {{gym_name}}.',
+          1,
+          now,
+          now,
+        ],
+      },
+
+      {
+        query: `
+          INSERT OR IGNORE INTO sms_templates
+          (
+            id,
+            type,
+            name,
+            content,
+            enabled,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+        params: [
+          'sms-fee-due-default',
+          'fee_due',
+          'Fee Due Reminder',
+          'Hi {{member_name}}, your membership fee of {{amount}} is due at {{gym_name}}. Please contact us for payment. Thank you.',
+          1,
+          now,
+          now,
+        ],
+      },
+
+      {
+        query: `
+          INSERT OR IGNORE INTO sms_templates
+          (
+            id,
+            type,
+            name,
+            content,
+            enabled,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+        params: [
+          'sms-fee-overdue-default',
+          'fee_overdue',
+          'Overdue Fee Reminder',
+          'Hi {{member_name}}, your membership fee of {{amount}} is overdue at {{gym_name}}. Please clear your outstanding balance at your earliest convenience. Thank you.',
+          1,
+          now,
+          now,
+        ],
+      },
+
+      {
+        query: `
+          INSERT OR IGNORE INTO sms_templates
+          (
+            id,
+            type,
+            name,
+            content,
+            enabled,
+            created_at,
+            updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+        params: [
+          'sms-membership-expiring-default',
+          'membership_expiring',
+          'Membership Expiry Reminder',
+          'Hi {{member_name}}, your membership at {{gym_name}} expires on {{expiry_date}}. Please renew your membership to continue your fitness journey.',
           1,
           now,
           now,

@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
-import { container } from '../../di/container';
+import { container } from '../../../di/container';
 
 export function SettingsScreen() {
   const navigation = useNavigation<any>();

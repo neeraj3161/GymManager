@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+
 import {
   ActivityIndicator,
   FlatList,
@@ -10,31 +11,125 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+
+import {
+  useFocusEffect,
+  useNavigation,
+  useRoute,
+} from '@react-navigation/native';
 
 import { Member } from '../../../domain/entities/Member';
 import { container } from '../../../di/container';
 
-type MemberFilter = 'all' | 'active' | 'disabled';
+type MemberFilter = 'all' | 'active' | 'disabled' | 'feesDue';
+
+interface RouteParams {
+  filter?: MemberFilter;
+}
 
 export function MembersScreen() {
   const navigation = useNavigation<any>();
+  const route = useRoute<any>();
+
+  const routeParams = route.params as RouteParams | undefined;
+
+  const requestedFilter = routeParams?.filter ?? 'all';
 
   const [members, setMembers] = useState<Member[]>([]);
+
   const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<MemberFilter>('all');
+
+  const [filter, setFilter] = useState<MemberFilter>(requestedFilter);
 
   const [loading, setLoading] = useState(true);
+
   const [refreshing, setRefreshing] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
+
+  /*
+   * Keep the local filter synchronized with
+   * navigation params.
+   *
+   * This is important when the user is already
+   * on Members and taps Fees Due again.
+   */
+  React.useEffect(() => {
+    setFilter(requestedFilter);
+  }, [requestedFilter]);
 
   const loadMembers = useCallback(async () => {
     try {
       setError(null);
 
-      const data = await container.repositories.member.getAll();
+      if (filter === 'feesDue') {
+        const allMembers = await container.repositories.member.getAll();
 
-      setMembers(data);
+        console.log('========== FEES DEBUG ==========');
+        console.log('TOTAL MEMBERS:', allMembers.length);
+
+        const feeDueMembers: Member[] = [];
+
+        for (const member of allMembers) {
+          console.log(
+            'MEMBER:',
+            member.firstName,
+            member.id,
+            'STATUS:',
+            member.status,
+          );
+
+          if (member.status !== 'active') {
+            console.log('SKIPPED: member disabled');
+            continue;
+          }
+
+          const membership =
+            await container.repositories.membership.getByMemberId(member.id);
+
+          console.log('MEMBERSHIP:', membership);
+
+          if (!membership) {
+            console.log('SKIPPED: no membership');
+            continue;
+          }
+
+          const feeStatus = await container.useCases.getMemberFeeStatus.execute(
+            member.id,
+          );
+
+          console.log('FEE STATUS:', feeStatus);
+
+          if (!feeStatus) {
+            console.log('SKIPPED: fee status null');
+            continue;
+          }
+
+          if (feeStatus.remainingAmount <= 0) {
+            console.log('SKIPPED: fully paid', feeStatus.remainingAmount);
+            continue;
+          }
+
+          console.log(
+            'ADDING MEMBER - OUTSTANDING:',
+            feeStatus.remainingAmount,
+          );
+
+          feeDueMembers.push(member);
+        }
+
+        console.log('FINAL FEES DUE MEMBERS:', feeDueMembers.length);
+
+        console.log('================================');
+
+        setMembers(feeDueMembers);
+
+        return;
+      } else {
+        const data = await container.repositories.member.getAll();
+
+        setMembers(data);
+      }
     } catch (err) {
       console.error('Failed to load members:', err);
 
@@ -43,7 +138,7 @@ export function MembersScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [filter]);
 
   useFocusEffect(
     useCallback(() => {
@@ -60,7 +155,12 @@ export function MembersScreen() {
     const normalizedQuery = query.trim().toLowerCase();
 
     return members.filter(member => {
-      const matchesFilter = filter === 'all' || member.status === filter;
+      /*
+       * feesDue has already been filtered by
+       * GetMembersWithFeesDueUseCase.
+       */
+      const matchesFilter =
+        filter === 'all' || filter === 'feesDue' || member.status === filter;
 
       if (!matchesFilter) {
         return false;
@@ -120,15 +220,20 @@ export function MembersScreen() {
     );
   }
 
+  const screenTitle = filter === 'feesDue' ? 'Fees Due' : 'Members';
+
+  const screenSubtitle =
+    filter === 'feesDue'
+      ? `${members.length} members with outstanding fees`
+      : `${members.length} total · ${activeCount} active`;
+
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <View>
-          <Text style={styles.title}>Members</Text>
+        <View style={styles.headerInfo}>
+          <Text style={styles.title}>{screenTitle}</Text>
 
-          <Text style={styles.subtitle}>
-            {members.length} total · {activeCount} active
-          </Text>
+          <Text style={styles.subtitle}>{screenSubtitle}</Text>
         </View>
 
         <Pressable
@@ -142,7 +247,11 @@ export function MembersScreen() {
       <TextInput
         value={query}
         onChangeText={setQuery}
-        placeholder="Search name, phone or member number"
+        placeholder={
+          filter === 'feesDue'
+            ? 'Search fee-due members'
+            : 'Search name, phone or member number'
+        }
         placeholderTextColor="#9CA3AF"
         autoCapitalize="none"
         autoCorrect={false}
@@ -151,21 +260,47 @@ export function MembersScreen() {
 
       <View style={styles.filterRow}>
         <FilterButton
-          label={`All ${members.length}`}
+          label={`All ${filter === 'all' ? members.length : ''}`}
           selected={filter === 'all'}
-          onPress={() => setFilter('all')}
+          onPress={() => {
+            setFilter('all');
+            navigation.setParams({
+              filter: 'all',
+            });
+          }}
         />
 
         <FilterButton
           label={`Active ${activeCount}`}
           selected={filter === 'active'}
-          onPress={() => setFilter('active')}
+          onPress={() => {
+            setFilter('active');
+            navigation.setParams({
+              filter: 'active',
+            });
+          }}
         />
 
         <FilterButton
           label={`Disabled ${disabledCount}`}
           selected={filter === 'disabled'}
-          onPress={() => setFilter('disabled')}
+          onPress={() => {
+            setFilter('disabled');
+            navigation.setParams({
+              filter: 'disabled',
+            });
+          }}
+        />
+
+        <FilterButton
+          label="Fees Due"
+          selected={filter === 'feesDue'}
+          onPress={() => {
+            setFilter('feesDue');
+            navigation.setParams({
+              filter: 'feesDue',
+            });
+          }}
         />
       </View>
 
@@ -182,6 +317,7 @@ export function MembersScreen() {
         renderItem={({ item }) => (
           <MemberCard
             member={item}
+            showFeeDue={filter === 'feesDue'}
             onPress={() =>
               navigation.navigate('MemberDetails', {
                 memberId: item.id,
@@ -222,10 +358,11 @@ function FilterButton({ label, selected, onPress }: FilterButtonProps) {
 
 interface MemberCardProps {
   member: Member;
+  showFeeDue: boolean;
   onPress: () => void;
 }
 
-function MemberCard({ member, onPress }: MemberCardProps) {
+function MemberCard({ member, showFeeDue, onPress }: MemberCardProps) {
   const fullName = `${member.firstName} ${member.lastName ?? ''}`.trim();
 
   const initials = getInitials(member);
@@ -250,18 +387,24 @@ function MemberCard({ member, onPress }: MemberCardProps) {
       </View>
 
       <View style={styles.right}>
-        <View
-          style={[
-            styles.statusBadge,
-            member.status === 'active'
-              ? styles.activeBadge
-              : styles.disabledBadge,
-          ]}
-        >
-          <Text style={styles.statusText}>
-            {member.status === 'active' ? 'Active' : 'Disabled'}
-          </Text>
-        </View>
+        {showFeeDue ? (
+          <View style={[styles.statusBadge, styles.feeDueBadge]}>
+            <Text style={[styles.statusText, styles.feeDueText]}>Fee Due</Text>
+          </View>
+        ) : (
+          <View
+            style={[
+              styles.statusBadge,
+              member.status === 'active'
+                ? styles.activeBadge
+                : styles.disabledBadge,
+            ]}
+          >
+            <Text style={styles.statusText}>
+              {member.status === 'active' ? 'Active' : 'Disabled'}
+            </Text>
+          </View>
+        )}
 
         <Text style={styles.chevron}>›</Text>
       </View>
@@ -284,11 +427,19 @@ function EmptyState({ hasSearch, filter, onAddMember }: EmptyStateProps) {
     message = 'No active members.';
   } else if (filter === 'disabled') {
     message = 'No disabled members.';
+  } else if (filter === 'feesDue') {
+    message = 'No members have fees due.';
   }
 
   return (
     <View style={styles.empty}>
       <Text style={styles.emptyTitle}>{message}</Text>
+
+      {filter === 'feesDue' && !hasSearch && (
+        <Text style={styles.emptyText}>
+          All active member fees are currently paid.
+        </Text>
+      )}
 
       {!hasSearch && filter === 'all' && (
         <>
@@ -364,6 +515,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+
+  headerInfo: {
+    flex: 1,
+    marginRight: 12,
   },
 
   title: {
@@ -513,10 +669,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#F3F4F6',
   },
 
+  feeDueBadge: {
+    backgroundColor: '#FEF3C7',
+  },
+
   statusText: {
     fontSize: 11,
     fontWeight: '800',
     color: '#374151',
+  },
+
+  feeDueText: {
+    color: '#92400E',
   },
 
   chevron: {

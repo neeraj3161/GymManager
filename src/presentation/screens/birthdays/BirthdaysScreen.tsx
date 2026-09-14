@@ -23,6 +23,8 @@ export function BirthdaysScreen() {
 
   const load = useCallback(async () => {
     try {
+      setLoading(true);
+
       const data = await container.useCases.getUpcomingBirthdays.execute(30);
 
       setBirthdays(data);
@@ -63,30 +65,76 @@ export function BirthdaysScreen() {
     });
   };
 
-  const sendBirthdayWhatsApp = async (birthday: BirthdayMember) => {
-    const name = getFullName(birthday);
+  const getFullName = (birthday: BirthdayMember): string => {
+    return [birthday.member.firstName, birthday.member.lastName]
+      .filter(Boolean)
+      .join(' ');
+  };
 
-    const gymName = 'Your Gym Name';
+  const getInitial = (birthday: BirthdayMember): string => {
+    return birthday.member.firstName.charAt(0).toUpperCase() || '?';
+  };
 
-    const message =
+  const getGymName = async (): Promise<string> => {
+    try {
+      const gym = await container.useCases.getGymProfile.execute();
+
+      return gym?.name?.trim() || 'Our Gym';
+    } catch {
+      return 'Our Gym';
+    }
+  };
+
+  const buildBirthdayMessage = (name: string, gymName: string): string => {
+    return (
       `🎂 Happy Birthday ${name}! 🎉\n\n` +
       `${gymName} wishes you a very Happy Birthday! ` +
       `May your day be filled with happiness, good health ` +
       `and success. 💪\n\n` +
       `Thank you for being a valued member of ${gymName}. ` +
       `We look forward to seeing you stronger and fitter every day! 🏋️\n\n` +
-      `Have a fantastic year ahead! 🎉`;
+      `Have a fantastic year ahead! 🎉`
+    );
+  };
 
-    const phone = birthday.member.phone.replace(/\D/g, '');
+  const normalizeIndianPhone = (phone: string): string => {
+    const digits = phone.replace(/\D/g, '');
 
-    // India numbers: convert 10-digit number to +91 format.
-    const internationalPhone = phone.length === 10 ? `91${phone}` : phone;
+    if (digits.length === 10) {
+      return `91${digits}`;
+    }
 
-    const url =
-      `whatsapp://send?phone=${internationalPhone}` +
-      `&text=${encodeURIComponent(message)}`;
+    if (digits.length === 12 && digits.startsWith('91')) {
+      return digits;
+    }
 
+    if (digits.startsWith('0') && digits.length === 11) {
+      return `91${digits.substring(1)}`;
+    }
+
+    return digits;
+  };
+
+  const sendBirthdayWhatsApp = async (birthday: BirthdayMember) => {
     try {
+      const gymName = await getGymName();
+      const name = getFullName(birthday);
+      const phone = normalizeIndianPhone(birthday.member.phone);
+
+      if (!phone) {
+        Alert.alert(
+          'Invalid phone number',
+          'This member does not have a valid phone number.',
+        );
+        return;
+      }
+
+      const message = buildBirthdayMessage(name, gymName);
+
+      const url =
+        `whatsapp://send?phone=${phone}` +
+        `&text=${encodeURIComponent(message)}`;
+
       const supported = await Linking.canOpenURL(url);
 
       if (!supported) {
@@ -98,28 +146,30 @@ export function BirthdaysScreen() {
       }
 
       await Linking.openURL(url);
-    } catch {
+    } catch (error) {
       Alert.alert(
         'Unable to open WhatsApp',
-        'Could not open WhatsApp for this member.',
+        error instanceof Error
+          ? error.message
+          : 'Could not open WhatsApp for this member.',
       );
     }
   };
 
-  const getFullName = (birthday: BirthdayMember) => {
-    return [birthday.member.firstName, birthday.member.lastName]
-      .filter(Boolean)
-      .join(' ');
-  };
-
-  const getInitial = (birthday: BirthdayMember) => {
-    return birthday.member.firstName.charAt(0).toUpperCase();
-  };
-
   const callMember = async (phone: string) => {
-    const url = `tel:${phone}`;
-
     try {
+      const cleanedPhone = phone.replace(/[^\d+]/g, '');
+
+      if (!cleanedPhone) {
+        Alert.alert(
+          'Invalid phone number',
+          'This member does not have a valid phone number.',
+        );
+        return;
+      }
+
+      const url = `tel:${cleanedPhone}`;
+
       const supported = await Linking.canOpenURL(url);
 
       if (!supported) {
@@ -137,28 +187,24 @@ export function BirthdaysScreen() {
   };
 
   const sendBirthdaySms = async (birthday: BirthdayMember) => {
-    const gym = await container.useCases.getGymProfile.execute();
-    const gymName = gym?.name ?? 'Our Gym';
-    const name = getFullName(birthday);
-
-    const message =
-      `🎂 Happy Birthday ${name}! 🎉\n\n` +
-      `${gymName} wishes you a very Happy Birthday! ` +
-      `May your day be filled with happiness, good health ` +
-      `and success. 💪\n\n` +
-      `Thank you for being a valued member of ${gymName}. ` +
-      `We look forward to seeing you stronger and fitter every day! 🏋️\n\n` +
-      `Have a fantastic year ahead! 🎉`;
-
-    const url =
-      `sms:${birthday.member.phone}` + `?body=${encodeURIComponent(message)}`;
-
     try {
+      const gymName = await getGymName();
+      const name = getFullName(birthday);
 
-    const url =
-      `sms:${birthday.member.phone}` + `?body=${encodeURIComponent(message)}`;
+      const phone = birthday.member.phone.replace(/\D/g, '');
 
-    try {
+      if (!phone) {
+        Alert.alert(
+          'Invalid phone number',
+          'This member does not have a valid phone number.',
+        );
+        return;
+      }
+
+      const message = buildBirthdayMessage(name, gymName);
+
+      const url = `sms:${phone}` + `?body=${encodeURIComponent(message)}`;
+
       const supported = await Linking.canOpenURL(url);
 
       if (!supported) {
@@ -170,8 +216,13 @@ export function BirthdaysScreen() {
       }
 
       await Linking.openURL(url);
-    } catch {
-      Alert.alert('Unable to send SMS', 'Could not open the SMS application.');
+    } catch (error) {
+      Alert.alert(
+        'Unable to send SMS',
+        error instanceof Error
+          ? error.message
+          : 'Could not open the SMS application.',
+      );
     }
   };
 
@@ -214,6 +265,7 @@ export function BirthdaysScreen() {
         ) : (
           birthdays.map(item => {
             const name = getFullName(item);
+
             const dateText = formatBirthday(item.birthday, item.daysUntil);
 
             const isToday = item.daysUntil === 0;

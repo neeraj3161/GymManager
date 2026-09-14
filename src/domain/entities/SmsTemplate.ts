@@ -1,8 +1,8 @@
 export type SmsTemplateType =
   | 'birthday'
-  | 'fee_reminder'
-  | 'membership_expiry'
-  | 'payment_confirmation';
+  | 'fee_due'
+  | 'fee_overdue'
+  | 'membership_expiring';
 
 export interface SmsTemplate {
   id: string;

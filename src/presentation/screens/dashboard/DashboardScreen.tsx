@@ -8,6 +8,7 @@ import {
   Text,
   View,
 } from 'react-native';
+
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
 import { container } from '../../../di/container';
@@ -25,8 +26,11 @@ export function DashboardScreen() {
   const navigation = useNavigation<any>();
 
   const [stats, setStats] = useState<DashboardStats | null>(null);
+
   const [loading, setLoading] = useState(true);
+
   const [refreshing, setRefreshing] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
 
   const loadDashboard = useCallback(async () => {
@@ -125,7 +129,11 @@ export function DashboardScreen() {
         <StatCard
           title="Active Members"
           value={dashboard.activeMembers}
-          onPress={() => navigation.navigate('Members')}
+          onPress={() =>
+            navigation.navigate('Members', {
+              filter: 'active',
+            })
+          }
         />
 
         <StatCard
@@ -134,10 +142,17 @@ export function DashboardScreen() {
           onPress={() => navigation.navigate('Members')}
         />
 
+        {/* IMPORTANT:
+            Fees Due opens ONLY members with
+            outstanding fees. */}
         <StatCard
           title="Fees Due"
           value={formatCurrency(dashboard.feesDue)}
-          onPress={() => navigation.navigate('Members')}
+          onPress={() =>
+            navigation.navigate('Members', {
+              filter: 'feesDue',
+            })
+          }
         />
       </View>
 

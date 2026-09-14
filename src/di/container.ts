@@ -82,6 +82,16 @@ import { BcryptPasswordHasher } from '../infrastructure/auth/BcryptPasswordHashe
 import { SQLiteGymRepository } from '../infrastructure/database/repositories/SQLiteGymRepository';
 import { GetGymProfileUseCase } from '../application/gym/GetGymProfile';
 import { UpdateGymProfileUseCase } from '../application/gym/UpdateGymProfile';
+
+//--------------------------------------------------
+//SMS Tempelate
+//--------------------------------------------------
+import { SQLiteSmsTemplateRepository } from '../infrastructure/database/repositories/SQLiteSmsTemplateRepository';
+
+import { GetSmsTemplatesUseCase } from '../application/sms/GetSmsTemplates';
+import { UpdateSmsTemplateUseCase } from '../application/sms/UpdateSmsTemplate';
+
+import { GetMembersWithFeesDueUseCase } from '../application/members/GetMembersWithFeesDue';
 // --------------------------------------------------
 // Infrastructure
 // --------------------------------------------------
@@ -111,6 +121,8 @@ const membershipAdjustmentRepository = new SQLiteMembershipAdjustmentRepository(
 const userRepository = new SQLiteUserRepository(database);
 
 const gymRepository = new SQLiteGymRepository(database);
+
+const smsTemplateRepository = new SQLiteSmsTemplateRepository(database);
 
 // --------------------------------------------------
 // Membership Use Cases
@@ -205,6 +217,7 @@ export const container = {
     membershipAdjustment: membershipAdjustmentRepository,
     user: userRepository,
     gym: gymRepository,
+    smsTemplate: smsTemplateRepository,
   },
 
   useCases: {
@@ -219,6 +232,8 @@ export const container = {
     enableMember: new EnableMemberUseCase(memberRepository),
 
     getMemberDetails: new GetMemberDetailsUseCase(memberRepository),
+
+    getMembersWithFeesDue: new GetMembersWithFeesDueUseCase(database),
 
     // ----------------------------------------------
     // Memberships
@@ -301,5 +316,13 @@ export const container = {
     getGymProfile: new GetGymProfileUseCase(gymRepository),
 
     updateGymProfile: new UpdateGymProfileUseCase(gymRepository),
+
+    // ----------------------------------------------
+    // SMS Templates
+    // ----------------------------------------------
+
+    getSmsTemplates: new GetSmsTemplatesUseCase(smsTemplateRepository),
+
+    updateSmsTemplate: new UpdateSmsTemplateUseCase(smsTemplateRepository),
   },
 };
