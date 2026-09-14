@@ -1,4 +1,4 @@
-import {Database} from '../../infrastructure/database/SQLiteDatabase';
+import { Database } from '../../infrastructure/database/SQLiteDatabase';
 
 export interface DashboardStats {
   totalMembers: number;

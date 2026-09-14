@@ -1,33 +1,30 @@
-import { PaymentRepository } from '../../domain/repositories/PaymentRepository';
 import { MembershipRepository } from '../../domain/repositories/MembershipRepository';
+import { PaymentRepository } from '../../domain/repositories/PaymentRepository';
 import { MembershipAdjustmentRepository } from '../../domain/repositories/MembershipAdjustmentRepository';
 
-export type FeeStatus = 'PAID' | 'PARTIAL' | 'DUE' | 'OVERDUE';
-
-export interface MemberFeeStatus {
+export interface MembershipDue {
   membershipAmount: number;
   adjustmentAmount: number;
   totalPaid: number;
   remainingAmount: number;
-  status: FeeStatus;
 }
 
-export class GetMemberFeeStatusUseCase {
+export class GetMembershipDueUseCase {
   constructor(
-    private readonly paymentRepository: PaymentRepository,
     private readonly membershipRepository: MembershipRepository,
+    private readonly paymentRepository: PaymentRepository,
     private readonly adjustmentRepository: MembershipAdjustmentRepository,
   ) {}
 
-  async execute(memberId: string): Promise<MemberFeeStatus | null> {
-    if (!memberId) {
-      throw new Error('Member ID is required');
+  async execute(membershipId: string): Promise<MembershipDue> {
+    if (!membershipId) {
+      throw new Error('Membership ID is required');
     }
 
-    const membership = await this.membershipRepository.getByMemberId(memberId);
+    const membership = await this.membershipRepository.getById(membershipId);
 
     if (!membership) {
-      return null;
+      throw new Error('Membership not found');
     }
 
     const totalPaid = await this.paymentRepository.getTotalPaidByMembership(
@@ -44,27 +41,11 @@ export class GetMemberFeeStatusUseCase {
 
     const remainingAmount = Math.max(effectiveAmount - totalPaid, 0);
 
-    const expiryDate = new Date(membership.endDate);
-    const today = new Date();
-
-    let status: FeeStatus;
-
-    if (remainingAmount === 0) {
-      status = 'PAID';
-    } else if (expiryDate < today) {
-      status = 'OVERDUE';
-    } else if (totalPaid > 0) {
-      status = 'PARTIAL';
-    } else {
-      status = 'DUE';
-    }
-
     return {
       membershipAmount: membership.amount,
       adjustmentAmount,
       totalPaid,
       remainingAmount,
-      status,
     };
   }
 }

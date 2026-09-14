@@ -1,7 +1,6 @@
-import {MembershipRepository} from '../../../domain/repositories/MembershipRepository';
-import {Membership} from '../../../domain/entities/Membership';
-import {Database} from '../SQLiteDatabase';
-
+import { MembershipRepository } from '../../../domain/repositories/MembershipRepository';
+import { Membership } from '../../../domain/entities/Membership';
+import { Database } from '../SQLiteDatabase';
 type MembershipRow = {
   id: string;
   member_id: string;
@@ -9,6 +8,10 @@ type MembershipRow = {
   start_date: string;
   end_date: string;
   amount: number;
+  adjustment_amount: number;
+  adjustment_type: string | null;
+  adjustment_notes: string | null;
+  previous_membership_id: string | null;
   status: 'active' | 'expiring' | 'expired';
   created_at: string;
   updated_at: string;
@@ -22,6 +25,10 @@ function toMembership(row: MembershipRow): Membership {
     startDate: row.start_date,
     endDate: row.end_date,
     amount: row.amount,
+    adjustmentAmount: row.adjustment_amount,
+    adjustmentType: row.adjustment_type ?? undefined,
+    adjustmentNotes: row.adjustment_notes ?? undefined,
+    previousMembershipId: row.previous_membership_id ?? undefined,
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -50,11 +57,58 @@ export class SQLiteMembershipRepository implements MembershipRepository {
     return rows[0] ? toMembership(rows[0]) : null;
   }
 
+  async update(membership: Membership): Promise<void> {
+    await this.database.execute(
+      `
+    UPDATE memberships
+    SET
+      plan_id = ?,
+      start_date = ?,
+      end_date = ?,
+      amount = ?,
+      adjustment_amount = ?,
+      adjustment_type = ?,
+      adjustment_notes = ?,
+      previous_membership_id = ?,
+      status = ?,
+      updated_at = ?
+    WHERE id = ?
+    `,
+      [
+        membership.planId,
+        membership.startDate,
+        membership.endDate,
+        membership.amount,
+        membership.adjustmentAmount,
+        membership.adjustmentType ?? null,
+        membership.adjustmentNotes ?? null,
+        membership.previousMembershipId ?? null,
+        membership.status,
+        membership.updatedAt,
+        membership.id,
+      ],
+    );
+  }
+
   async save(membership: Membership): Promise<void> {
     await this.database.execute(
       `INSERT INTO memberships
-       (id, member_id, plan_id, start_date, end_date, amount, status, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     (
+       id,
+       member_id,
+       plan_id,
+       start_date,
+       end_date,
+       amount,
+       adjustment_amount,
+       adjustment_type,
+       adjustment_notes,
+       previous_membership_id,
+       status,
+       created_at,
+       updated_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         membership.id,
         membership.memberId,
@@ -62,6 +116,10 @@ export class SQLiteMembershipRepository implements MembershipRepository {
         membership.startDate,
         membership.endDate,
         membership.amount,
+        membership.adjustmentAmount,
+        membership.adjustmentType ?? null,
+        membership.adjustmentNotes ?? null,
+        membership.previousMembershipId ?? null,
         membership.status,
         membership.createdAt,
         membership.updatedAt,

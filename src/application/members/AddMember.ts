@@ -1,6 +1,6 @@
-import {MemberRepository} from '../../domain/repositories/MemberRepository';
-import {Member} from '../../domain/entities/Member';
-import {IdGenerator} from '../shared/IdGenerator';
+import { MemberRepository } from '../../domain/repositories/MemberRepository';
+import { Member } from '../../domain/entities/Member';
+import { IdGenerator } from '../shared/IdGenerator';
 
 export interface AddMemberInput {
   firstName: string;

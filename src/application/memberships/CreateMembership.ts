@@ -1,7 +1,7 @@
-import {Membership} from '../../domain/entities/Membership';
-import {MembershipRepository} from '../../domain/repositories/MembershipRepository';
-import {PlanRepository} from '../../domain/repositories/PlanRepository';
-import {IdGenerator} from '../shared/IdGenerator';
+import { Membership } from '../../domain/entities/Membership';
+import { MembershipRepository } from '../../domain/repositories/MembershipRepository';
+import { PlanRepository } from '../../domain/repositories/PlanRepository';
+import { IdGenerator } from '../shared/IdGenerator';
 
 export interface CreateMembershipInput {
   memberId: string;
@@ -37,9 +37,7 @@ export class CreateMembershipUseCase {
       throw new Error('Membership plan not found or inactive');
     }
 
-    const start = input.startDate
-      ? new Date(input.startDate)
-      : new Date();
+    const start = input.startDate ? new Date(input.startDate) : new Date();
 
     const end = addMonths(start, plan.durationMonths);
     end.setDate(end.getDate() - 1);
@@ -53,6 +51,9 @@ export class CreateMembershipUseCase {
       startDate: start.toISOString(),
       endDate: end.toISOString(),
       amount: plan.amount,
+
+      adjustmentAmount: 0,
+
       status: 'active',
       createdAt: now,
       updatedAt: now,

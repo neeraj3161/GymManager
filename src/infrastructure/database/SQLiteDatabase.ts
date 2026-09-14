@@ -16,13 +16,41 @@ const db = open({
 
 export class SQLiteDatabase implements Database {
   private initialized = false;
+  private initializationPromise: Promise<void> | null = null;
 
   async initialize(): Promise<void> {
     if (this.initialized) {
       return;
     }
 
+    if (this.initializationPromise) {
+      return this.initializationPromise;
+    }
+
+    this.initializationPromise = this.initializeDatabase();
+
+    try {
+      await this.initializationPromise;
+    } finally {
+      this.initializationPromise = null;
+    }
+  }
+
+  private async initializeDatabase(): Promise<void> {
     await db.executeAsync('PRAGMA foreign_keys = ON');
+
+    /*
+     * IMPORTANT:
+     * Tables are created in dependency order.
+     *
+     * members
+     *    ↓
+     * membership_plans
+     *    ↓
+     * memberships
+     *    ↓
+     * payments
+     */
 
     await db.executeBatchAsync([
       {
@@ -40,6 +68,7 @@ export class SQLiteDatabase implements Database {
           )
         `,
       },
+
       {
         query: `
           CREATE TABLE IF NOT EXISTS users (
@@ -54,6 +83,7 @@ export class SQLiteDatabase implements Database {
           )
         `,
       },
+
       {
         query: `
           CREATE TABLE IF NOT EXISTS members (
@@ -73,6 +103,7 @@ export class SQLiteDatabase implements Database {
           )
         `,
       },
+
       {
         query: `
           CREATE TABLE IF NOT EXISTS membership_plans (
@@ -87,6 +118,7 @@ export class SQLiteDatabase implements Database {
           )
         `,
       },
+
       {
         query: `
           CREATE TABLE IF NOT EXISTS memberships (
@@ -96,37 +128,74 @@ export class SQLiteDatabase implements Database {
             start_date TEXT NOT NULL,
             end_date TEXT NOT NULL,
             amount REAL NOT NULL,
+            adjustment_amount REAL NOT NULL DEFAULT 0,
+            adjustment_type TEXT,
+            adjustment_notes TEXT,
+            previous_membership_id TEXT,
             status TEXT NOT NULL,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
-            FOREIGN KEY(member_id) REFERENCES members(id) ON DELETE CASCADE,
-            FOREIGN KEY(plan_id) REFERENCES membership_plans(id)
+
+            FOREIGN KEY(member_id)
+              REFERENCES members(id)
+              ON DELETE CASCADE,
+
+            FOREIGN KEY(plan_id)
+              REFERENCES membership_plans(id),
+
+            FOREIGN KEY(previous_membership_id)
+              REFERENCES memberships(id)
+          )
+        `,
+      },
+
+      {
+        query: `
+          CREATE TABLE IF NOT EXISTS payments (
+            id TEXT PRIMARY KEY,
+            member_id TEXT NOT NULL,
+            membership_id TEXT NOT NULL,
+            amount REAL NOT NULL,
+            payment_date TEXT NOT NULL,
+            payment_method TEXT NOT NULL,
+            notes TEXT,
+            recorded_by TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+
+            FOREIGN KEY(member_id)
+              REFERENCES members(id)
+              ON DELETE CASCADE,
+
+            FOREIGN KEY(membership_id)
+              REFERENCES memberships(id)
+              ON DELETE CASCADE
           )
         `,
       },
       {
         query: `
-    CREATE TABLE IF NOT EXISTS payments (
+    CREATE TABLE IF NOT EXISTS membership_adjustments (
       id TEXT PRIMARY KEY,
-      member_id TEXT NOT NULL,
       membership_id TEXT NOT NULL,
+      member_id TEXT NOT NULL,
+      type TEXT NOT NULL,
       amount REAL NOT NULL,
-      payment_date TEXT NOT NULL,
-      payment_method TEXT NOT NULL,
+      reason TEXT,
       notes TEXT,
-      recorded_by TEXT NOT NULL,
+      created_by TEXT NOT NULL,
       created_at TEXT NOT NULL,
-
-      FOREIGN KEY(member_id)
-        REFERENCES members(id)
-        ON DELETE CASCADE,
 
       FOREIGN KEY(membership_id)
         REFERENCES memberships(id)
+        ON DELETE CASCADE,
+
+      FOREIGN KEY(member_id)
+        REFERENCES members(id)
         ON DELETE CASCADE
     )
   `,
       },
+
       {
         query: `
           CREATE TABLE IF NOT EXISTS sms_templates (
@@ -140,6 +209,7 @@ export class SQLiteDatabase implements Database {
           )
         `,
       },
+
       {
         query: `
           CREATE TABLE IF NOT EXISTS reminders (
@@ -149,10 +219,14 @@ export class SQLiteDatabase implements Database {
             scheduled_at TEXT NOT NULL,
             status TEXT NOT NULL,
             created_at TEXT NOT NULL,
-            FOREIGN KEY(member_id) REFERENCES members(id) ON DELETE CASCADE
+
+            FOREIGN KEY(member_id)
+              REFERENCES members(id)
+              ON DELETE CASCADE
           )
         `,
       },
+
       {
         query: `
           CREATE TABLE IF NOT EXISTS app_settings (
@@ -161,6 +235,7 @@ export class SQLiteDatabase implements Database {
           )
         `,
       },
+
       {
         query: `
           CREATE TABLE IF NOT EXISTS audit_logs (
@@ -173,33 +248,44 @@ export class SQLiteDatabase implements Database {
           )
         `,
       },
+
       {
         query:
           'CREATE INDEX IF NOT EXISTS idx_members_status ON members(status)',
       },
+
       {
         query:
           'CREATE INDEX IF NOT EXISTS idx_members_name ON members(first_name, last_name)',
       },
+
       {
         query:
           'CREATE INDEX IF NOT EXISTS idx_membership_member ON memberships(member_id)',
       },
+
       {
         query:
           'CREATE INDEX IF NOT EXISTS idx_membership_end_date ON memberships(end_date)',
       },
+
       {
         query:
           'CREATE INDEX IF NOT EXISTS idx_payments_member ON payments(member_id)',
       },
+
       {
         query:
           'CREATE INDEX IF NOT EXISTS idx_payments_membership ON payments(membership_id)',
       },
+
       {
         query:
           'CREATE INDEX IF NOT EXISTS idx_reminders_date ON reminders(scheduled_at)',
+      },
+      {
+        query:
+          'CREATE INDEX IF NOT EXISTS idx_adjustments_membership ON membership_adjustments(membership_id)',
       },
     ]);
 
@@ -216,7 +302,16 @@ export class SQLiteDatabase implements Database {
       {
         query: `
           INSERT OR IGNORE INTO membership_plans
-          (id, name, duration_months, amount, description, active, created_at, updated_at)
+          (
+            id,
+            name,
+            duration_months,
+            amount,
+            description,
+            active,
+            created_at,
+            updated_at
+          )
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `,
         params: [
@@ -230,10 +325,20 @@ export class SQLiteDatabase implements Database {
           now,
         ],
       },
+
       {
         query: `
           INSERT OR IGNORE INTO membership_plans
-          (id, name, duration_months, amount, description, active, created_at, updated_at)
+          (
+            id,
+            name,
+            duration_months,
+            amount,
+            description,
+            active,
+            created_at,
+            updated_at
+          )
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `,
         params: [
@@ -247,10 +352,20 @@ export class SQLiteDatabase implements Database {
           now,
         ],
       },
+
       {
         query: `
           INSERT OR IGNORE INTO membership_plans
-          (id, name, duration_months, amount, description, active, created_at, updated_at)
+          (
+            id,
+            name,
+            duration_months,
+            amount,
+            description,
+            active,
+            created_at,
+            updated_at
+          )
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `,
         params: [
@@ -264,10 +379,20 @@ export class SQLiteDatabase implements Database {
           now,
         ],
       },
+
       {
         query: `
           INSERT OR IGNORE INTO membership_plans
-          (id, name, duration_months, amount, description, active, created_at, updated_at)
+          (
+            id,
+            name,
+            duration_months,
+            amount,
+            description,
+            active,
+            created_at,
+            updated_at
+          )
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `,
         params: [
@@ -287,18 +412,27 @@ export class SQLiteDatabase implements Database {
   }
 
   async execute(query: string, params: unknown[] = []): Promise<void> {
+    await this.initialize();
+
     await db.executeAsync(query, params as any[]);
   }
 
   async query<T>(query: string, params: unknown[] = []): Promise<T[]> {
+    await this.initialize();
+
     const result = await db.executeAsync(query, params as any[]);
 
     return result.rows?._array as T[];
   }
 
   async executeBatch(
-    commands: Array<{ query: string; params?: unknown[] }>,
+    commands: Array<{
+      query: string;
+      params?: unknown[];
+    }>,
   ): Promise<void> {
+    await this.initialize();
+
     await db.executeBatchAsync(
       commands.map(command => ({
         query: command.query,

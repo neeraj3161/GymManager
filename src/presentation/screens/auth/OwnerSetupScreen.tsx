@@ -12,41 +12,45 @@ import {
 import { container } from '../../../di/container';
 import { useAuthStore } from '../../../store/authStore';
 
-export function LoginScreen() {
+export function OwnerSetupScreen() {
   const login = useAuthStore(state => state.login);
 
+  const [name, setName] = useState('');
   const [username, setUsername] = useState('');
-
   const [password, setPassword] = useState('');
-
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async () => {
-    if (!username.trim()) {
-      Alert.alert('Username required', 'Please enter your username.');
-      return;
-    }
-
-    if (!password) {
-      Alert.alert('Password required', 'Please enter your password.');
+  const handleCreateOwner = async () => {
+    if (password !== confirmPassword) {
+      Alert.alert(
+        'Passwords do not match',
+        'Please make sure both passwords are the same.',
+      );
       return;
     }
 
     try {
       setLoading(true);
 
-      const user = await container.useCases.login.execute({
+      const user = await container.useCases.createOwner.execute({
+        name,
         username,
         password,
       });
 
       login(user);
 
-      // Navigation will be connected next.
+      Alert.alert(
+        'Owner account created',
+        'Your gym owner account has been created.',
+      );
     } catch (error) {
       Alert.alert(
-        'Login failed',
-        error instanceof Error ? error.message : 'Unable to sign in.',
+        'Setup failed',
+        error instanceof Error
+          ? error.message
+          : 'Unable to create the owner account.',
       );
     } finally {
       setLoading(false);
@@ -58,14 +62,25 @@ export function LoginScreen() {
       <View style={styles.container}>
         <Text style={styles.logo}>Gym Manager</Text>
 
-        <Text style={styles.subtitle}>Sign in to your gym</Text>
+        <Text style={styles.title}>Set up your gym</Text>
+
+        <Text style={styles.subtitle}>Create the first owner account.</Text>
+
+        <Text style={styles.label}>Your Name</Text>
+
+        <TextInput
+          value={name}
+          onChangeText={setName}
+          placeholder="Enter your name"
+          style={styles.input}
+        />
 
         <Text style={styles.label}>Username</Text>
 
         <TextInput
           value={username}
           onChangeText={setUsername}
-          placeholder="Username"
+          placeholder="Choose a username"
           autoCapitalize="none"
           autoCorrect={false}
           style={styles.input}
@@ -76,18 +91,28 @@ export function LoginScreen() {
         <TextInput
           value={password}
           onChangeText={setPassword}
-          placeholder="Password"
+          placeholder="Create a password"
+          secureTextEntry
+          style={styles.input}
+        />
+
+        <Text style={styles.label}>Confirm Password</Text>
+
+        <TextInput
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          placeholder="Confirm your password"
           secureTextEntry
           style={styles.input}
         />
 
         <Pressable
           style={[styles.button, loading && styles.disabledButton]}
-          onPress={handleLogin}
+          onPress={handleCreateOwner}
           disabled={loading}
         >
           <Text style={styles.buttonText}>
-            {loading ? 'Signing In...' : 'Sign In'}
+            {loading ? 'Creating...' : 'Create Owner Account'}
           </Text>
         </Pressable>
       </View>
@@ -102,9 +127,9 @@ const styles = StyleSheet.create({
   },
 
   container: {
-    padding: 24,
-    justifyContent: 'center',
     flex: 1,
+    justifyContent: 'center',
+    padding: 24,
   },
 
   logo: {
@@ -113,9 +138,16 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
 
+  title: {
+    marginTop: 28,
+    fontSize: 24,
+    fontWeight: '800',
+    color: '#111827',
+  },
+
   subtitle: {
     marginTop: 6,
-    marginBottom: 30,
+    marginBottom: 26,
     color: '#6B7280',
   },
 
@@ -126,11 +158,12 @@ const styles = StyleSheet.create({
   },
 
   input: {
-    backgroundColor: '#FFFFFF',
     height: 52,
+    backgroundColor: '#FFFFFF',
     borderRadius: 13,
     paddingHorizontal: 14,
     marginBottom: 17,
+    color: '#111827',
   },
 
   button: {

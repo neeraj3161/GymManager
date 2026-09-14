@@ -19,6 +19,18 @@ export class RecordPaymentUseCase {
   ) {}
 
   async execute(input: RecordPaymentInput): Promise<Payment> {
+    if (!input.memberId) {
+      throw new Error('Member ID is required');
+    }
+
+    if (!input.membershipId) {
+      throw new Error('Membership ID is required');
+    }
+
+    if (!input.recordedBy) {
+      throw new Error('User ID is required');
+    }
+
     if (!Number.isFinite(input.amount) || input.amount <= 0) {
       throw new Error('Payment amount must be greater than zero');
     }
@@ -36,6 +48,7 @@ export class RecordPaymentUseCase {
       recordedBy: input.recordedBy,
       createdAt: now,
     };
+
     await this.paymentRepository.create(payment);
 
     return payment;
