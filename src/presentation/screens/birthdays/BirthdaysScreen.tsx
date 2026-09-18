@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Modal,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -20,6 +21,9 @@ export function BirthdaysScreen() {
   const [birthdays, setBirthdays] = useState<BirthdayMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedBirthday, setSelectedBirthday] =
+    useState<BirthdayMember | null>(null);
+  const [actionsVisible, setActionsVisible] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -226,6 +230,16 @@ export function BirthdaysScreen() {
     }
   };
 
+  const openBirthdayActions = (birthday: BirthdayMember) => {
+    setSelectedBirthday(birthday);
+    setActionsVisible(true);
+  };
+
+  const closeBirthdayActions = () => {
+    setActionsVisible(false);
+    setSelectedBirthday(null);
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -291,36 +305,95 @@ export function BirthdaysScreen() {
                   <Text style={styles.phone}>{item.member.phone}</Text>
                 </View>
 
-                <View style={styles.actions}>
-                  <View style={styles.actionRow}>
-                    <Pressable
-                      style={styles.callButton}
-                      onPress={() => callMember(item.member.phone)}
-                    >
-                      <Text style={styles.callText}>Call</Text>
-                    </Pressable>
-
-                    <Pressable
-                      style={styles.sms}
-                      onPress={() => sendBirthdaySms(item)}
-                    >
-                      <Text style={styles.smsText}>SMS</Text>
-                    </Pressable>
-                  </View>
-
-                  <Pressable
-                    style={styles.whatsapp}
-                    onPress={() => sendBirthdayWhatsApp(item)}
-                  >
-                    <Text style={styles.whatsappIcon}>WA</Text>
-
-                    <Text style={styles.whatsappText}>WhatsApp Wish</Text>
-                  </Pressable>
-                </View>
+                <Pressable
+                  style={styles.contactButton}
+                  onPress={() => openBirthdayActions(item)}
+                >
+                  <Text style={styles.contactButtonText}>Contact</Text>
+                </Pressable>
               </View>
             );
           })
         )}
+        <Modal
+          visible={actionsVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={closeBirthdayActions}
+        >
+          <Pressable style={styles.modalOverlay} onPress={closeBirthdayActions}>
+            <Pressable
+              style={styles.modalCard}
+              onPress={event => event.stopPropagation()}
+            >
+              <Text style={styles.modalTitle}>Birthday Wishes</Text>
+
+              <Text style={styles.modalSubtitle}>
+                {selectedBirthday
+                  ? `Contact ${getFullName(selectedBirthday)}`
+                  : ''}
+              </Text>
+
+              <Pressable
+                style={styles.modalAction}
+                onPress={async () => {
+                  if (!selectedBirthday) {
+                    return;
+                  }
+
+                  await callMember(selectedBirthday.member.phone);
+                  closeBirthdayActions();
+                }}
+              >
+                <Text style={styles.modalActionTitle}>Call</Text>
+                <Text style={styles.modalActionDescription}>
+                  Open phone dialer
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.modalAction}
+                onPress={async () => {
+                  if (!selectedBirthday) {
+                    return;
+                  }
+
+                  await sendBirthdaySms(selectedBirthday);
+                  closeBirthdayActions();
+                }}
+              >
+                <Text style={styles.modalActionTitle}>SMS</Text>
+                <Text style={styles.modalActionDescription}>
+                  Open SMS with birthday wish
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.modalAction}
+                onPress={async () => {
+                  if (!selectedBirthday) {
+                    return;
+                  }
+
+                  await sendBirthdayWhatsApp(selectedBirthday);
+                  closeBirthdayActions();
+                }}
+              >
+                <Text style={styles.modalActionTitle}>WhatsApp</Text>
+                <Text style={styles.modalActionDescription}>
+                  Open WhatsApp with birthday wish
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.cancelButton}
+                onPress={closeBirthdayActions}
+              >
+                <Text style={styles.cancelText}>Cancel</Text>
+              </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </ScrollView>
     </SafeAreaView>
   );
@@ -424,70 +497,74 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
-  actions: {
-    alignItems: 'flex-end',
-    gap: 7,
-  },
-
-  actionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-
-  whatsapp: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#25D366',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-
-  whatsappIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    color: '#25D366',
-    fontSize: 8,
-    fontWeight: '900',
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    marginRight: 5,
-  },
-
-  whatsappText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-
-  callButton: {
+  contactButton: {
     borderWidth: 1,
     borderColor: '#D1D5DB',
-    borderRadius: 9,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
   },
 
-  callText: {
-    color: '#374151',
-    fontWeight: '700',
-    fontSize: 12,
-  },
-
-  sms: {
-    backgroundColor: '#111827',
-    borderRadius: 9,
-    paddingHorizontal: 11,
-    paddingVertical: 8,
-  },
-
-  smsText: {
-    color: '#FFFFFF',
+  contactButtonText: {
+    color: '#111827',
     fontWeight: '800',
     fontSize: 12,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.45)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+
+  modalCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    padding: 20,
+  },
+
+  modalTitle: {
+    fontSize: 21,
+    fontWeight: '800',
+    color: '#111827',
+  },
+
+  modalSubtitle: {
+    marginTop: 5,
+    marginBottom: 14,
+    fontSize: 14,
+    color: '#6B7280',
+  },
+
+  modalAction: {
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+
+  modalActionTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#111827',
+  },
+
+  modalActionDescription: {
+    marginTop: 3,
+    fontSize: 13,
+    color: '#6B7280',
+  },
+
+  cancelButton: {
+    marginTop: 14,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+
+  cancelText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#6B7280',
   },
 
   empty: {

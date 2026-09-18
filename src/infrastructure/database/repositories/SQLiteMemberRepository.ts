@@ -1,6 +1,6 @@
-import {MemberRepository} from '../../../domain/repositories/MemberRepository';
-import {Member} from '../../../domain/entities/Member';
-import {Database} from '../SQLiteDatabase';
+import { MemberRepository } from '../../../domain/repositories/MemberRepository';
+import { Member } from '../../../domain/entities/Member';
+import { Database } from '../SQLiteDatabase';
 
 type MemberRow = {
   id: string;
@@ -94,6 +94,14 @@ export class SQLiteMemberRepository implements MemberRepository {
     );
   }
 
+  async getByPhone(phone: string): Promise<Member | null> {
+    const rows = await this.database.query<Member>(
+      `SELECT * FROM members WHERE phone = ? LIMIT 1`,
+      [phone],
+    );
+
+    return rows[0] ?? null;
+  }
   async update(member: Member): Promise<void> {
     await this.database.execute(
       `UPDATE members SET

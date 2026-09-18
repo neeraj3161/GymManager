@@ -57,6 +57,15 @@ export class SQLiteMembershipRepository implements MembershipRepository {
     return rows[0] ? toMembership(rows[0]) : null;
   }
 
+  async getByPhone(phone: string): Promise<Membership | null> {
+    const rows = await this.database.query<MembershipRow>(
+      `SELECT * FROM memberships WHERE member_id IN (SELECT id FROM members WHERE phone = ?) LIMIT 1`,
+      [phone],
+    );
+
+    return rows[0] ? toMembership(rows[0]) : null;
+  }
+
   async update(membership: Membership): Promise<void> {
     await this.database.execute(
       `

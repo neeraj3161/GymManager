@@ -1,41 +1,69 @@
+import { create } from 'zustand';
+import * as Keychain from 'react-native-keychain';
+
 import { User } from '../../domain/entities/User';
-import { SecureStorage } from '../storage/SecureStorageAdapter';
 
-const AUTH_SESSION_KEY = 'gym_manager_auth_session';
+const KEYCHAIN_SERVICE = 'gym-manager-auth';
+const KEYCHAIN_ACCOUNT = 'session';
 
-export class AuthSessionStorage {
-  constructor(private readonly secureStorage: SecureStorage) {}
+interface AuthState {
+  user: User | null;
 
-  async save(user: User): Promise<void> {
-    await this.secureStorage.set(
-      AUTH_SESSION_KEY,
-      JSON.stringify({
-        userId: user.id,
-      }),
-    );
-  }
+  login: (user: User) => Promise<void>;
 
-  async getUserId(): Promise<string | null> {
-    const value = await this.secureStorage.get(AUTH_SESSION_KEY);
+  logout: () => Promise<void>;
 
-    if (!value) {
-      return null;
-    }
+  hydrate: (user: User | null) => void;
 
+  getPersistedUserId: () => Promise<string | null>;
+}
+
+export const useAuthStore = create<AuthState>(set => ({
+  user: null,
+
+  login: async user => {
+    await Keychain.setGenericPassword(KEYCHAIN_ACCOUNT, user.id, {
+      service: KEYCHAIN_SERVICE,
+    });
+
+    set({
+      user,
+    });
+  },
+
+  logout: async () => {
     try {
-      const session = JSON.parse(value);
+      await Keychain.resetGenericPassword({
+        service: KEYCHAIN_SERVICE,
+      });
+    } finally {
+      set({
+        user: null,
+      });
+    }
+  },
 
-      if (!session || typeof session.userId !== 'string') {
+  hydrate: user => {
+    set({
+      user,
+    });
+  },
+
+  getPersistedUserId: async () => {
+    try {
+      const credentials = await Keychain.getGenericPassword({
+        service: KEYCHAIN_SERVICE,
+      });
+
+      if (!credentials) {
         return null;
       }
 
-      return session.userId;
-    } catch {
+      return credentials.password;
+    } catch (error) {
+      console.error('Failed to read persisted authentication:', error);
+
       return null;
     }
-  }
-
-  async clear(): Promise<void> {
-    await this.secureStorage.remove(AUTH_SESSION_KEY);
-  }
-}
+  },
+}));

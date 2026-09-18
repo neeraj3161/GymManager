@@ -13,9 +13,11 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
 import { container } from '../../../di/container';
+import { useAuthStore } from '../../../store/authStore';
 
 export function SettingsScreen() {
   const navigation = useNavigation<any>();
+  const logout = useAuthStore(state => state.logout);
 
   const [gymName, setGymName] = useState('');
   const [phone, setPhone] = useState('');
@@ -239,6 +241,38 @@ export function SettingsScreen() {
             Alert.alert('Gym Manager', 'Local-first gym management app.')
           }
         />
+
+        <Text style={styles.group}>Account</Text>
+
+        <Pressable
+          style={styles.logoutButton}
+          onPress={() => {
+            Alert.alert('Log out', 'Are you sure you want to log out?', [
+              {
+                text: 'Cancel',
+                style: 'cancel',
+              },
+              {
+                text: 'Log out',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await logout();
+                  } catch (error) {
+                    Alert.alert(
+                      'Logout failed',
+                      error instanceof Error
+                        ? error.message
+                        : 'Unable to log out.',
+                    );
+                  }
+                },
+              },
+            ]);
+          }}
+        >
+          <Text style={styles.logoutButtonText}>Log out</Text>
+        </Pressable>
       </ScrollView>
     </SafeAreaView>
   );
@@ -444,6 +478,21 @@ const styles = StyleSheet.create({
   chevron: {
     fontSize: 28,
     color: '#9CA3AF',
+  },
+
+  logoutButton: {
+    height: 50,
+    borderRadius: 12,
+    backgroundColor: '#FEE2E2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+
+  logoutButtonText: {
+    color: '#DC2626',
+    fontSize: 14,
+    fontWeight: '800',
   },
 
   loadingContainer: {

@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import {
@@ -16,12 +17,14 @@ import {
   useNavigation,
   useRoute,
 } from '@react-navigation/native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { Member } from '../../../domain/entities/Member';
 import { Membership } from '../../../domain/entities/Membership';
 import { MembershipPlan } from '../../../domain/entities/MembershipPlan';
 import { Payment } from '../../../domain/entities/Payment';
 import { MemberFeeStatus } from '../../../application/payments/GetMemberFeeStatus';
+import { UpdateMemberUseCase } from '../../../application/members/UpdateMember';
 import { container } from '../../../di/container';
 
 export function MemberDetailsScreen() {
@@ -39,6 +42,18 @@ export function MemberDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [showDobPicker, setShowDobPicker] = useState(false);
+
+  const [editFirstName, setEditFirstName] = useState('');
+  const [editLastName, setEditLastName] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editDateOfBirth, setEditDateOfBirth] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editGender, setEditGender] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -87,6 +102,143 @@ export function MemberDetailsScreen() {
   const refresh = () => {
     setRefreshing(true);
     load();
+  };
+
+  const startEditing = () => {
+    if (!member) {
+      return;
+    }
+
+    setEditFirstName(member.firstName);
+    setEditLastName(member.lastName ?? '');
+    setEditPhone(member.phone);
+    setEditEmail(member.email ?? '');
+    setEditDateOfBirth(member.dateOfBirth ?? '');
+    setEditAddress(member.address ?? '');
+    setEditGender(member.gender ?? '');
+    setEditing(true);
+  };
+
+  const cancelEditing = () => {
+    if (saving) {
+      return;
+    }
+
+    setShowDobPicker(false);
+    setEditing(false);
+  };
+
+  const parseDateInput = (value: string): Date | null => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+
+    if (!match) {
+      return null;
+    }
+
+    const date = new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+    );
+
+    if (
+      date.getFullYear() !== Number(match[1]) ||
+      date.getMonth() !== Number(match[2]) - 1 ||
+      date.getDate() !== Number(match[3])
+    ) {
+      return null;
+    }
+
+    return date;
+  };
+
+  const formatDateForInput = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
+  };
+
+  const saveMember = async () => {
+    if (!member) {
+      return;
+    }
+
+    const firstName = editFirstName.trim();
+    const lastName = editLastName.trim();
+    const phone = editPhone.trim();
+    const email = editEmail.trim();
+    const address = editAddress.trim();
+    const gender = editGender.trim();
+
+    if (!firstName) {
+      Alert.alert('Validation', 'First name is required.');
+      return;
+    }
+
+    if (!phone) {
+      Alert.alert('Validation', 'Phone number is required.');
+      return;
+    }
+
+    let dateOfBirth: string | undefined;
+
+    if (editDateOfBirth.trim()) {
+      const dob = parseDateInput(editDateOfBirth.trim());
+
+      if (!dob) {
+        Alert.alert(
+          'Invalid date',
+          'Date of birth must be a valid date in YYYY-MM-DD format.',
+        );
+        return;
+      }
+
+      if (dob > new Date()) {
+        Alert.alert('Invalid date', 'Date of birth cannot be in the future.');
+        return;
+      }
+
+      dateOfBirth = editDateOfBirth.trim();
+    }
+
+    try {
+      setSaving(true);
+
+      const useCase = new UpdateMemberUseCase(container.repositories.member);
+
+      await useCase.execute({
+        id: member.id,
+        memberNumber: member.memberNumber,
+        firstName,
+        lastName: lastName || undefined,
+        phone,
+        email: email || undefined,
+        dateOfBirth,
+        address: address || undefined,
+        gender: gender || undefined,
+        photoUri: member.photoUri,
+        status: member.status,
+        createdAt: member.createdAt,
+        updatedAt: new Date().toISOString(),
+      });
+
+      setEditing(false);
+      setShowDobPicker(false);
+      await load();
+
+      Alert.alert('Saved', 'Member details have been updated.');
+    } catch (err) {
+      Alert.alert(
+        'Unable to update member',
+        err instanceof Error
+          ? err.message
+          : 'Something went wrong while updating the member.',
+      );
+    } finally {
+      setSaving(false);
+    }
   };
 
   const disable = () => {
@@ -214,28 +366,111 @@ export function MemberDetailsScreen() {
             <Text style={styles.avatarText}>{getInitials(member)}</Text>
           </View>
 
-          <Text style={styles.name}>{memberName}</Text>
+          {editing ? (
+            <>
+              <TextInputField
+                label="First name *"
+                value={editFirstName}
+                onChangeText={setEditFirstName}
+              />
 
-          <Pressable style={styles.phoneRow} onPress={callMember}>
-            <Text style={styles.phone}>{member.phone}</Text>
+              <TextInputField
+                label="Last name"
+                value={editLastName}
+                onChangeText={setEditLastName}
+              />
 
-            <Text style={styles.callIcon}>☎</Text>
-          </Pressable>
+              <TextInputField
+                label="Phone *"
+                value={editPhone}
+                onChangeText={setEditPhone}
+                keyboardType="phone-pad"
+              />
 
-          <Text style={styles.memberNumber}>{member.memberNumber}</Text>
+              <TextInputField
+                label="Email"
+                value={editEmail}
+                onChangeText={setEditEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
 
-          <View
-            style={[
-              styles.memberStatus,
-              member.status === 'active'
-                ? styles.activeStatus
-                : styles.disabledStatus,
-            ]}
-          >
-            <Text style={styles.memberStatusText}>
-              {member.status === 'active' ? 'ACTIVE' : 'DISABLED'}
-            </Text>
-          </View>
+              <Pressable
+                style={styles.dateField}
+                onPress={() => setShowDobPicker(true)}
+              >
+                <Text style={styles.fieldLabel}>Date of birth</Text>
+                <Text
+                  style={[
+                    styles.dateFieldText,
+                    !editDateOfBirth && styles.placeholderText,
+                  ]}
+                >
+                  {editDateOfBirth || 'Select date of birth'}
+                </Text>
+              </Pressable>
+
+              {showDobPicker ? (
+                <DateTimePicker
+                  value={
+                    parseDateInput(editDateOfBirth) ?? new Date(1995, 0, 1)
+                  }
+                  mode="date"
+                  display="default"
+                  maximumDate={new Date()}
+                  onChange={(event, selectedDate) => {
+                    if (event.type === 'dismissed') {
+                      setShowDobPicker(false);
+                      return;
+                    }
+
+                    if (selectedDate) {
+                      setEditDateOfBirth(formatDateForInput(selectedDate));
+                    }
+
+                    setShowDobPicker(false);
+                  }}
+                />
+              ) : null}
+
+              <TextInputField
+                label="Gender"
+                value={editGender}
+                onChangeText={setEditGender}
+              />
+
+              <TextInputField
+                label="Address"
+                value={editAddress}
+                onChangeText={setEditAddress}
+                multiline
+              />
+            </>
+          ) : (
+            <>
+              <Text style={styles.name}>{memberName}</Text>
+
+              <Pressable style={styles.phoneRow} onPress={callMember}>
+                <Text style={styles.phone}>{member.phone}</Text>
+                <Text style={styles.callIcon}>☎</Text>
+              </Pressable>
+
+              <Text style={styles.memberNumber}>{member.memberNumber}</Text>
+
+              <View
+                style={[
+                  styles.memberStatus,
+                  member.status === 'active'
+                    ? styles.activeStatus
+                    : styles.disabledStatus,
+                ]}
+              >
+                <Text style={styles.memberStatusText}>
+                  {member.status === 'active' ? 'ACTIVE' : 'DISABLED'}
+                </Text>
+              </View>
+            </>
+          )}
         </View>
 
         {/* MEMBERSHIP */}
@@ -321,30 +556,59 @@ export function MemberDetailsScreen() {
 
         {/* CONTACT */}
 
-        <Section title="Contact">
-          <Row label="Phone" value={member.phone} />
+        {!editing ? (
+          <Section title="Contact">
+            <Row label="Phone" value={member.phone} />
 
-          <Row label="Email" value={member.email ?? '-'} />
+            <Row label="Email" value={member.email ?? '-'} />
 
-          <Row
-            label="Date of birth"
-            value={member.dateOfBirth ? formatDate(member.dateOfBirth) : '-'}
-            last
-          />
-        </Section>
+            <Row
+              label="Date of birth"
+              value={member.dateOfBirth ? formatDate(member.dateOfBirth) : '-'}
+              last
+            />
+          </Section>
+        ) : null}
 
         {/* ACTIONS */}
 
         <View style={styles.actions}>
-          {member.status === 'active' ? (
-            <Pressable style={styles.dangerButton} onPress={disable}>
-              <Text style={styles.dangerButtonText}>Disable Member</Text>
-            </Pressable>
+          {editing ? (
+            <>
+              <Pressable
+                style={styles.primaryButton}
+                onPress={saveMember}
+                disabled={saving}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {saving ? 'Saving...' : 'Save Changes'}
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.actionButton}
+                onPress={cancelEditing}
+                disabled={saving}
+              >
+                <Text style={styles.actionButtonText}>Cancel</Text>
+              </Pressable>
+            </>
           ) : (
-            <Pressable style={styles.primaryButton} onPress={enable}>
-              <Text style={styles.primaryButtonText}>Enable Member</Text>
+            <Pressable style={styles.primaryButton} onPress={startEditing}>
+              <Text style={styles.primaryButtonText}>Edit Member</Text>
             </Pressable>
           )}
+
+          {!editing &&
+            (member.status === 'active' ? (
+              <Pressable style={styles.dangerButton} onPress={disable}>
+                <Text style={styles.dangerButtonText}>Disable Member</Text>
+              </Pressable>
+            ) : (
+              <Pressable style={styles.primaryButton} onPress={enable}>
+                <Text style={styles.primaryButtonText}>Enable Member</Text>
+              </Pressable>
+            ))}
 
           <Pressable
             style={styles.actionButton}
@@ -384,6 +648,37 @@ export function MemberDetailsScreen() {
         </View>
       </ScrollView>
     </SafeAreaView>
+  );
+}
+
+function TextInputField({
+  label,
+  value,
+  onChangeText,
+  keyboardType,
+  autoCapitalize,
+  multiline = false,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  keyboardType?: 'default' | 'phone-pad' | 'email-address';
+  autoCapitalize?: 'none' | 'sentences';
+  multiline?: boolean;
+}) {
+  return (
+    <View style={styles.inputGroup}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+      <TextInput
+        style={[styles.input, multiline && styles.multilineInput]}
+        value={value}
+        onChangeText={onChangeText}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        multiline={multiline}
+        textAlignVertical={multiline ? 'top' : 'center'}
+      />
+    </View>
   );
 }
 
@@ -706,6 +1001,54 @@ const styles = StyleSheet.create({
 
   neutralBadge: {
     backgroundColor: '#F3F4F6',
+  },
+
+  inputGroup: {
+    width: '100%',
+    marginTop: 12,
+  },
+
+  fieldLabel: {
+    marginBottom: 6,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6B7280',
+  },
+
+  input: {
+    minHeight: 46,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    backgroundColor: '#FFFFFF',
+    color: '#111827',
+    fontSize: 15,
+  },
+
+  multilineInput: {
+    minHeight: 80,
+    paddingTop: 12,
+  },
+
+  dateField: {
+    width: '100%',
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+  },
+
+  dateFieldText: {
+    color: '#111827',
+    fontSize: 15,
+  },
+
+  placeholderText: {
+    color: '#9CA3AF',
   },
 
   paymentRow: {

@@ -566,5 +566,42 @@ export class SQLiteDatabase implements Database {
         params: command.params as any[] | undefined,
       })),
     );
+
+    const memberColumns = await db.executeAsync(`PRAGMA table_info(members)`);
+
+    const columns = memberColumns.rows._array as Array<{
+      name: string;
+    }>;
+
+    const hasPhoneNormalized = columns.some(
+      column => column.name === 'phone_normalized',
+    );
+
+    if (!hasPhoneNormalized) {
+      await db.executeAsync(
+        `ALTER TABLE members ADD COLUMN phone_normalized TEXT`,
+      );
+
+      await db.executeAsync(`
+    UPDATE members
+    SET phone_normalized =
+      CASE
+        WHEN length(replace(replace(replace(replace(replace(phone, ' ', ''), '+', ''), '-', ''), '(', ''), ')', '')) = 10
+          THEN replace(replace(replace(replace(replace(phone, ' ', ''), '+', ''), '-', ''), '(', ''), ')', '')
+        WHEN length(replace(replace(replace(replace(replace(phone, ' ', ''), '+', ''), '-', ''), '(', ''), ')', '')) = 11
+             AND substr(replace(replace(replace(replace(replace(phone, ' ', ''), '+', ''), '-', ''), '(', ''), ')', ''), 1, 1) = '0'
+          THEN substr(replace(replace(replace(replace(replace(phone, ' ', ''), '+', ''), '-', ''), '(', ''), ')', ''), 2)
+        WHEN length(replace(replace(replace(replace(replace(phone, ' ', ''), '+', ''), '-', ''), '(', ''), ')', '')) = 12
+             AND substr(replace(replace(replace(replace(replace(phone, ' ', ''), '+', ''), '-', ''), '(', ''), ')', ''), 1, 2) = '91'
+          THEN substr(replace(replace(replace(replace(replace(phone, ' ', ''), '+', ''), '-', ''), '(', ''), ')', ''), 3)
+        ELSE replace(replace(replace(replace(replace(phone, ' ', ''), '+', ''), '-', ''), '(', ''), ')', '')
+      END
+  `);
+
+      await db.executeAsync(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_members_phone_normalized
+    ON members(phone_normalized)
+  `);
+    }
   }
 }

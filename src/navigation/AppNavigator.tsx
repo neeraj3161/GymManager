@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Pressable,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -181,9 +182,18 @@ export function AppNavigator() {
           <Stack.Screen
             name="Dashboard"
             component={DashboardScreen}
-            options={{
+            options={({ navigation }) => ({
               title: 'Gym Manager',
-            }}
+              headerRight: () => (
+                <Pressable
+                  onPress={() => navigation.navigate('Settings')}
+                  hitSlop={10}
+                  style={{ padding: 4 }}
+                >
+                  <Text style={{ fontSize: 22 }}>⚙</Text>
+                </Pressable>
+              ),
+            })}
           />
 
           <Stack.Screen

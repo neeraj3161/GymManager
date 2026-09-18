@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useNavigation } from '@react-navigation/native';
 
 import { container } from '../../../di/container';
@@ -52,6 +53,8 @@ export function AddMemberScreen() {
   const [loadingPlans, setLoadingPlans] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [showDobPicker, setShowDobPicker] = useState(false);
 
   useEffect(() => {
     loadPlans();
@@ -141,6 +144,37 @@ export function AddMemberScreen() {
         'Please enter the member phone number.',
       );
       return;
+    }
+
+    const phoneDigits = phone.replace(/\D/g, '');
+
+    if (
+      phoneDigits.length !== 10 &&
+      phoneDigits.length !== 11 &&
+      phoneDigits.length !== 12
+    ) {
+      Alert.alert(
+        'Invalid phone number',
+        'Please enter a valid 10-digit Indian phone number.',
+      );
+      return;
+    }
+
+    if (dateOfBirth) {
+      const dob = parseDateInput(dateOfBirth);
+
+      if (!dob) {
+        Alert.alert('Invalid date', 'Please select a valid date of birth.');
+        return;
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      if (dob > today) {
+        Alert.alert('Invalid date', 'Date of birth cannot be in the future.');
+        return;
+      }
     }
 
     if (!selectedPlan) {
@@ -305,6 +339,7 @@ export function AddMemberScreen() {
           onChangeText={setPhone}
           placeholder="Enter phone number"
           keyboardType="phone-pad"
+          maxLength={15}
         />
 
         <Field
@@ -316,13 +351,45 @@ export function AddMemberScreen() {
           autoCapitalize="none"
         />
 
-        <Field
-          label="Date of Birth"
-          value={dateOfBirth}
-          onChangeText={setDateOfBirth}
-          placeholder="YYYY-MM-DD"
-          keyboardType="numbers-and-punctuation"
-        />
+        <View style={styles.field}>
+          <Text style={styles.label}>Date of Birth</Text>
+
+          <Pressable
+            style={styles.dateInput}
+            onPress={() => setShowDobPicker(true)}
+          >
+            <Text
+              style={[
+                styles.dateInputText,
+                !dateOfBirth && styles.dateInputPlaceholder,
+              ]}
+            >
+              {dateOfBirth || 'Select date of birth'}
+            </Text>
+          </Pressable>
+
+          {showDobPicker && (
+            <DateTimePicker
+              value={
+                dateOfBirth
+                  ? parseDateInput(dateOfBirth) ?? new Date()
+                  : new Date()
+              }
+              mode="date"
+              display="calendar"
+              maximumDate={new Date()}
+              onChange={(event, selectedDate) => {
+                setShowDobPicker(false);
+
+                if (event.type === 'dismissed' || !selectedDate) {
+                  return;
+                }
+
+                setDateOfBirth(formatDateForInput(selectedDate));
+              }}
+            />
+          )}
+        </View>
 
         <SectionTitle title="Membership" />
 
@@ -466,6 +533,7 @@ interface FieldProps {
   onChangeText: (value: string) => void;
   placeholder: string;
   keyboardType?: any;
+  maxLength?: number;
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
 }
 
@@ -475,6 +543,7 @@ function Field({
   onChangeText,
   placeholder,
   keyboardType,
+  maxLength,
   autoCapitalize,
 }: FieldProps) {
   return (
@@ -488,6 +557,7 @@ function Field({
         placeholderTextColor="#9CA3AF"
         style={styles.input}
         keyboardType={keyboardType}
+        maxLength={maxLength}
         autoCapitalize={autoCapitalize}
       />
     </View>
@@ -584,6 +654,23 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 10,
     backgroundColor: '#111827',
+  },
+
+  dateInput: {
+    height: 48,
+    paddingHorizontal: 14,
+    borderRadius: 11,
+    backgroundColor: '#FFFFFF',
+    justifyContent: 'center',
+  },
+
+  dateInputText: {
+    color: '#111827',
+    fontSize: 15,
+  },
+
+  dateInputPlaceholder: {
+    color: '#9CA3AF',
   },
 
   retryText: {
