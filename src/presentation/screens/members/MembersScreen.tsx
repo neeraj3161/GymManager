@@ -3,6 +3,9 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Linking,
+  Modal,
+  Alert,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -21,10 +24,47 @@ import {
 import { Member } from '../../../domain/entities/Member';
 import { container } from '../../../di/container';
 
-type MemberFilter = 'all' | 'active' | 'disabled' | 'feesDue';
+type MemberFilter = 'all' | 'active' | 'disabled' | 'feesDue' | 'expiringSoon';
 
+type MemberWithMembership = Member & {
+  membershipEndDate?: string | null;
+};
 interface RouteParams {
   filter?: MemberFilter;
+}
+
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+
+function getMembershipDaysRemaining(endDate?: string | null): number | null {
+  if (!endDate) return null;
+
+  const dateString = endDate.slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) return null;
+
+  const [year, month, day] = dateString.split('-').map(Number);
+  const expiry = new Date(year, month - 1, day);
+  expiry.setHours(0, 0, 0, 0);
+
+  if (
+    expiry.getFullYear() !== year ||
+    expiry.getMonth() !== month - 1 ||
+    expiry.getDate() !== day
+  ) {
+    return null;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  return Math.round((expiry.getTime() - today.getTime()) / DAY_IN_MS);
+}
+
+function toLocalDateKey(date: Date): string {
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
 }
 
 export function MembersScreen() {
@@ -35,7 +75,7 @@ export function MembersScreen() {
 
   const requestedFilter = routeParams?.filter ?? 'all';
 
-  const [members, setMembers] = useState<Member[]>([]);
+  const [members, setMembers] = useState<MemberWithMembership[]>([]);
 
   const [query, setQuery] = useState('');
 
@@ -46,6 +86,9 @@ export function MembersScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
+  const [remindMember, setRemindMember] = useState<MemberWithMembership | null>(
+    null,
+  );
 
   /*
    * Keep the local filter synchronized with
@@ -62,13 +105,53 @@ export function MembersScreen() {
     try {
       setError(null);
 
+      if (filter === 'expiringSoon') {
+        const allMembers = await container.repositories.member.getAll();
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const expiryLimit = new Date(today);
+        expiryLimit.setDate(expiryLimit.getDate() + 7);
+
+        const todayKey = toLocalDateKey(today);
+        const expiryLimitKey = toLocalDateKey(expiryLimit);
+
+        const expiringMembers: MemberWithMembership[] = [];
+
+        for (const member of allMembers) {
+          if (member.status !== 'active') continue;
+
+          const membership =
+            await container.repositories.membership.getByMemberId(member.id);
+
+          if (!membership || membership.status !== 'active') continue;
+
+          const endDate = String(membership.endDate ?? '').slice(0, 10);
+
+          if (
+            /^\d{4}-\d{2}-\d{2}$/.test(endDate) &&
+            endDate >= todayKey &&
+            endDate <= expiryLimitKey
+          ) {
+            expiringMembers.push({
+              ...member,
+              membershipEndDate: membership.endDate ?? null,
+            });
+          }
+        }
+
+        setMembers(expiringMembers);
+        return;
+      }
+
       if (filter === 'feesDue') {
         const allMembers = await container.repositories.member.getAll();
 
         console.log('========== FEES DEBUG ==========');
         console.log('TOTAL MEMBERS:', allMembers.length);
 
-        const feeDueMembers: Member[] = [];
+        const feeDueMembers: MemberWithMembership[] = [];
 
         for (const member of allMembers) {
           console.log(
@@ -115,21 +198,36 @@ export function MembersScreen() {
             feeStatus.remainingAmount,
           );
 
-          feeDueMembers.push(member);
+          feeDueMembers.push({
+            ...member,
+            membershipEndDate: membership.endDate ?? null,
+          });
         }
 
         console.log('FINAL FEES DUE MEMBERS:', feeDueMembers.length);
-
         console.log('================================');
 
         setMembers(feeDueMembers);
-
         return;
-      } else {
-        const data = await container.repositories.member.getAll();
-
-        setMembers(data);
       }
+
+      // All/active/disabled lists also retain membership expiry metadata
+      // so expired memberships can display a red badge.
+      const data = await container.repositories.member.getAll();
+
+      const membersWithMembership: MemberWithMembership[] = await Promise.all(
+        data.map(async member => {
+          const membership =
+            await container.repositories.membership.getByMemberId(member.id);
+
+          return {
+            ...member,
+            membershipEndDate: membership?.endDate ?? null,
+          };
+        }),
+      );
+
+      setMembers(membersWithMembership);
     } catch (err) {
       console.error('Failed to load members:', err);
 
@@ -139,7 +237,6 @@ export function MembersScreen() {
       setRefreshing(false);
     }
   }, [filter]);
-
   useFocusEffect(
     useCallback(() => {
       loadMembers();
@@ -155,12 +252,13 @@ export function MembersScreen() {
     const normalizedQuery = query.trim().toLowerCase();
 
     return members.filter(member => {
-      /*
-       * feesDue has already been filtered by
-       * GetMembersWithFeesDueUseCase.
-       */
+      // These filters are already applied inside loadMembers().
+      // Do not filter them again by member.status.
       const matchesFilter =
-        filter === 'all' || filter === 'feesDue' || member.status === filter;
+        filter === 'all' ||
+        filter === 'feesDue' ||
+        filter === 'expiringSoon' ||
+        member.status === filter;
 
       if (!matchesFilter) {
         return false;
@@ -219,12 +317,18 @@ export function MembersScreen() {
       </SafeAreaView>
     );
   }
-
-  const screenTitle = filter === 'feesDue' ? 'Fees Due' : 'Members';
+  const screenTitle =
+    filter === 'feesDue'
+      ? 'Fees Due'
+      : filter === 'expiringSoon'
+      ? 'Expiring Soon'
+      : 'Members';
 
   const screenSubtitle =
     filter === 'feesDue'
       ? `${members.length} members with outstanding fees`
+      : filter === 'expiringSoon'
+      ? `${members.length} memberships expiring within 7 days`
       : `${members.length} total · ${activeCount} active`;
 
   return (
@@ -250,6 +354,8 @@ export function MembersScreen() {
         placeholder={
           filter === 'feesDue'
             ? 'Search fee-due members'
+            : filter === 'expiringSoon'
+            ? 'Search expiring members'
             : 'Search name, phone or member number'
         }
         placeholderTextColor="#9CA3AF"
@@ -304,6 +410,75 @@ export function MembersScreen() {
         />
       </View>
 
+      <Modal
+        visible={!!remindMember}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRemindMember(null)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setRemindMember(null)}
+        >
+          <Pressable style={styles.remindModal} onPress={() => {}}>
+            <Text style={styles.remindTitle}>Remind</Text>
+            <Text style={styles.remindSubtitle}>
+              {remindMember
+                ? `${remindMember.firstName} ${
+                    remindMember.lastName ?? ''
+                  }`.trim()
+                : ''}
+            </Text>
+            <Pressable
+              style={styles.remindOption}
+              onPress={() => {
+                if (!remindMember?.phone?.trim()) {
+                  Alert.alert('Phone number unavailable');
+                  return;
+                }
+                const phone = remindMember.phone.replace(/[^+\d]/g, '');
+                setRemindMember(null);
+                Linking.openURL(`tel:${phone}`).catch(() =>
+                  Alert.alert('Unable to open phone app'),
+                );
+              }}
+            >
+              <Text style={styles.remindOptionText}>Call</Text>
+            </Pressable>
+            <Pressable
+              style={styles.remindOption}
+              onPress={() =>
+                remindMember &&
+                sendMembershipReminder(remindMember, 'sms', () =>
+                  setRemindMember(null),
+                )
+              }
+            >
+              <Text style={styles.remindOptionText}>SMS</Text>
+            </Pressable>
+            <Pressable
+              style={styles.remindOption}
+              onPress={() =>
+                remindMember &&
+                sendMembershipReminder(remindMember, 'whatsapp', () =>
+                  setRemindMember(null),
+                )
+              }
+            >
+              <Text style={styles.remindOptionText}>WhatsApp</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.remindOption, styles.cancelOption]}
+              onPress={() => setRemindMember(null)}
+            >
+              <Text style={[styles.remindOptionText, styles.cancelText]}>
+                Cancel
+              </Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <FlatList
         data={filteredMembers}
         keyExtractor={item => item.id}
@@ -323,6 +498,7 @@ export function MembersScreen() {
                 memberId: item.id,
               })
             }
+            onLongPress={() => setRemindMember(item)}
           />
         )}
         ListEmptyComponent={
@@ -357,12 +533,18 @@ function FilterButton({ label, selected, onPress }: FilterButtonProps) {
 }
 
 interface MemberCardProps {
-  member: Member;
+  member: MemberWithMembership;
   showFeeDue: boolean;
   onPress: () => void;
+  onLongPress: () => void;
 }
 
-function MemberCard({ member, showFeeDue, onPress }: MemberCardProps) {
+function MemberCard({
+  member,
+  showFeeDue,
+  onPress,
+  onLongPress,
+}: MemberCardProps) {
   const fullName = `${member.firstName} ${member.lastName ?? ''}`.trim();
 
   const initials = getInitials(member);
@@ -371,6 +553,8 @@ function MemberCard({ member, showFeeDue, onPress }: MemberCardProps) {
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={450}
     >
       <View style={styles.avatar}>
         <Text style={styles.avatarText}>{initials}</Text>
@@ -387,29 +571,140 @@ function MemberCard({ member, showFeeDue, onPress }: MemberCardProps) {
       </View>
 
       <View style={styles.right}>
-        {showFeeDue ? (
-          <View style={[styles.statusBadge, styles.feeDueBadge]}>
-            <Text style={[styles.statusText, styles.feeDueText]}>Fee Due</Text>
-          </View>
-        ) : (
-          <View
-            style={[
-              styles.statusBadge,
-              member.status === 'active'
-                ? styles.activeBadge
-                : styles.disabledBadge,
-            ]}
-          >
-            <Text style={styles.statusText}>
-              {member.status === 'active' ? 'Active' : 'Disabled'}
-            </Text>
-          </View>
-        )}
+        <View style={styles.badgeColumn}>
+          {showFeeDue ? (
+            <View style={[styles.statusBadge, styles.feeDueBadge]}>
+              <Text style={[styles.statusText, styles.feeDueText]}>
+                Fee Due
+              </Text>
+            </View>
+          ) : (
+            <View
+              style={[
+                styles.statusBadge,
+                member.status === 'active'
+                  ? styles.activeBadge
+                  : styles.disabledBadge,
+              ]}
+            >
+              <Text style={styles.statusText}>
+                {member.status === 'active' ? 'Active' : 'Disabled'}
+              </Text>
+            </View>
+          )}
+
+          <MembershipExpiryBadge endDate={member.membershipEndDate} />
+        </View>
 
         <Text style={styles.chevron}>›</Text>
       </View>
     </Pressable>
   );
+}
+
+function MembershipExpiryBadge({ endDate }: { endDate?: string | null }) {
+  const daysRemaining = getMembershipDaysRemaining(endDate);
+
+  if (daysRemaining === null || daysRemaining > 7) return null;
+
+  if (daysRemaining < 0) {
+    return (
+      <View style={[styles.statusBadge, styles.expiredBadge]}>
+        <Text style={[styles.statusText, styles.expiredText]}>
+          {`Expired ${Math.abs(daysRemaining)}d`}
+        </Text>
+      </View>
+    );
+  }
+
+  if (daysRemaining === 0) {
+    return (
+      <View style={[styles.statusBadge, styles.expiringBadge]}>
+        <Text style={[styles.statusText, styles.expiringText]}>
+          Expires today
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={[styles.statusBadge, styles.expiringBadge]}>
+      <Text style={[styles.statusText, styles.expiringText]}>
+        {`${daysRemaining}d left`}
+      </Text>
+    </View>
+  );
+}
+
+function buildMembershipReminder(
+  member: MemberWithMembership,
+  gymName: string,
+  gymPhone: string,
+): string {
+  const name = member.firstName?.trim() || 'Member';
+  const days = getMembershipDaysRemaining(member.membershipEndDate);
+  const expiryDate = member.membershipEndDate?.slice(0, 10);
+
+  let status = 'your membership is due for renewal';
+  if (days !== null && days < 0) {
+    status = `your membership expired ${Math.abs(days)} day(s) ago`;
+  } else if (days === 0) {
+    status = 'your membership expires today';
+  } else if (days !== null) {
+    status = `your membership expires in ${days} day(s)`;
+  }
+
+  const gym = gymName.trim() || 'the gym';
+  const contact = gymPhone.trim()
+    ? `\nFor assistance or payment confirmation, contact ${gym} at ${gymPhone.trim()}.`
+    : '';
+
+  return `Hi ${name}, this is a reminder from ${gym}. Your membership ${status}${
+    expiryDate ? ` (expiry date: ${expiryDate})` : ''
+  }. Please renew your plan and pay the outstanding amount as soon as possible. Thank you.${contact}`;
+}
+
+async function sendMembershipReminder(
+  member: MemberWithMembership,
+  channel: 'sms' | 'whatsapp',
+  onOpened: () => void,
+) {
+  if (!member.phone?.trim()) {
+    Alert.alert(
+      'Phone number unavailable',
+      'This member has no phone number saved.',
+    );
+    return;
+  }
+
+  let gymName = '';
+  let gymPhone = '';
+  try {
+    const gym = await container.useCases.getGymProfile.execute();
+    gymName = gym?.name ?? '';
+    gymPhone = gym?.phone ?? '';
+  } catch (error) {
+    console.warn('Could not load gym profile for reminder:', error);
+  }
+
+  const message = buildMembershipReminder(member, gymName, gymPhone);
+  const phone = member.phone.replace(/[^\d]/g, '');
+  const whatsappPhone = phone.length === 10 ? `91${phone}` : phone;
+  const url =
+    channel === 'sms'
+      ? `sms:${member.phone.replace(/[^+\d]/g, '')}?body=${encodeURIComponent(
+          message,
+        )}`
+      : `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(message)}`;
+  try {
+    await Linking.openURL(url);
+    onOpened();
+  } catch {
+    Alert.alert(
+      channel === 'sms' ? 'Unable to open SMS' : 'Unable to open WhatsApp',
+      'Check that a compatible app is installed and the phone number is correct.',
+    );
+  }
 }
 
 interface EmptyStateProps {
@@ -429,6 +724,8 @@ function EmptyState({ hasSearch, filter, onAddMember }: EmptyStateProps) {
     message = 'No disabled members.';
   } else if (filter === 'feesDue') {
     message = 'No members have fees due.';
+  } else if (filter === 'expiringSoon') {
+    message = 'No memberships expiring soon.';
   }
 
   return (
@@ -655,6 +952,11 @@ const styles = StyleSheet.create({
     minHeight: 48,
   },
 
+  badgeColumn: {
+    alignItems: 'flex-end',
+    gap: 5,
+  },
+
   statusBadge: {
     paddingHorizontal: 9,
     paddingVertical: 6,
@@ -683,12 +985,62 @@ const styles = StyleSheet.create({
     color: '#92400E',
   },
 
+  expiringBadge: {
+    backgroundColor: '#FEF3C7',
+  },
+
+  expiringText: {
+    color: '#92400E',
+  },
+
+  expiredBadge: {
+    backgroundColor: '#FEE2E2',
+  },
+
+  expiredText: {
+    color: '#B91C1C',
+  },
+
   chevron: {
     marginTop: 5,
     fontSize: 22,
     lineHeight: 22,
     color: '#9CA3AF',
   },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  remindModal: { backgroundColor: '#FFFFFF', borderRadius: 18, padding: 20 },
+  remindTitle: { fontSize: 22, fontWeight: '800', color: '#111827' },
+  remindSubtitle: {
+    marginTop: 4,
+    marginBottom: 12,
+    color: '#6B7280',
+    fontSize: 14,
+  },
+  remindOption: {
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginTop: 7,
+    backgroundColor: '#F3F4F6',
+  },
+  remindOptionText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+  },
+  cancelOption: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  cancelText: { color: '#6B7280' },
 
   empty: {
     alignItems: 'center',

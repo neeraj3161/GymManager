@@ -1,50 +1,69 @@
 import { create } from 'zustand';
+import * as Keychain from 'react-native-keychain';
 
 import { User } from '../domain/entities/User';
-import { AuthSessionStorage } from '../infrastructure/auth/AuthSessionStorage';
-import { SecureStorageAdapter } from '../infrastructure/storage/SecureStorageAdapter';
+
+const KEYCHAIN_SERVICE = 'gym-manager-auth';
+const KEYCHAIN_ACCOUNT = 'session';
 
 interface AuthState {
   user: User | null;
-  hydrated: boolean;
 
-  login(user: User): Promise<void>;
-  logout(): Promise<void>;
-  hydrate(user: User | null): void;
-  getPersistedUserId(): Promise<string | null>;
+  login: (user: User) => Promise<void>;
+
+  logout: () => Promise<void>;
+
+  hydrate: (user: User | null) => void;
+
+  getPersistedUserId: () => Promise<string | null>;
 }
-
-const secureStorage = new SecureStorageAdapter();
-const sessionStorage = new AuthSessionStorage(secureStorage);
 
 export const useAuthStore = create<AuthState>(set => ({
   user: null,
-  hydrated: false,
 
   login: async user => {
-    await sessionStorage.save(user);
+    await Keychain.setGenericPassword(KEYCHAIN_ACCOUNT, user.id, {
+      service: KEYCHAIN_SERVICE,
+    });
+
     set({
       user,
-      hydrated: true,
     });
   },
 
   logout: async () => {
-    await sessionStorage.clear();
-    set({
-      user: null,
-      hydrated: true,
-    });
+    try {
+      await Keychain.resetGenericPassword({
+        service: KEYCHAIN_SERVICE,
+      });
+    } finally {
+      set({
+        user: null,
+      });
+    }
   },
 
   hydrate: user => {
     set({
       user,
-      hydrated: true,
     });
   },
 
   getPersistedUserId: async () => {
-    return sessionStorage.getUserId();
+    try {
+      const credentials = await Keychain.getGenericPassword({
+        service: KEYCHAIN_SERVICE,
+      });
+
+      if (!credentials) {
+        return null;
+      }
+
+      return credentials.password;
+    } catch (error) {
+      console.error('Failed to read persisted authentication:', error);
+
+      return null;
+    }
   },
 }));

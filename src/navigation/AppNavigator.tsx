@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 
 import { NavigationContainer } from '@react-navigation/native';
+
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { container } from '../di/container';
@@ -35,6 +36,7 @@ import { SettingsScreen } from '../presentation/screens/settings/SettingsScreen'
 import { RenewMembershipScreen } from '../presentation/screens/memberships/RenewMembershipScreen';
 
 import { ChangeMembershipPlanScreen } from '../presentation/screens/memberships/ChangeMembershipPlanScreen';
+import UpdateTestScreen from '../presentation/screens/UpdateTestScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -53,6 +55,7 @@ export type RootStackParamList = {
   Birthdays: undefined;
   Staff: undefined;
   Settings: undefined;
+  UpdateTest: undefined;
 
   RenewMembership: {
     memberId: string;
@@ -67,79 +70,93 @@ export type RootStackParamList = {
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-type AuthMode = 'loading' | 'ownerSetup' | 'login' | 'authenticated' | 'error';
+type InitialMode = 'loading' | 'ownerSetup' | 'ready' | 'error';
 
 export function AppNavigator() {
+  // Subscribe to Zustand. This is the key fix.
+  const user = useAuthStore(state => state.user);
   const hydrate = useAuthStore(state => state.hydrate);
 
-  const [mode, setMode] = useState<AuthMode>('loading');
+  const [initialMode, setInitialMode] = useState<InitialMode>('loading');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let mounted = true;
+
+    const initializeAuthentication = async () => {
+      try {
+        // Check whether an owner/account has been created.
+        const users = await container.repositories.user.getAll();
+
+        if (!mounted) return;
+
+        if (users.length === 0) {
+          setInitialMode('ownerSetup');
+          return;
+        }
+
+        // Check for a persisted session.
+        const persistedUserId = await useAuthStore
+          .getState()
+          .getPersistedUserId();
+
+        if (!mounted) return;
+
+        // No saved session: show Login.
+        if (!persistedUserId) {
+          hydrate(null);
+          setInitialMode('ready');
+          return;
+        }
+
+        // Validate saved session against SQLite.
+        const persistedUser = await container.repositories.user.getById(
+          persistedUserId,
+        );
+
+        if (!mounted) return;
+
+        // Invalid or disabled user.
+        if (!persistedUser || !persistedUser.active) {
+          await useAuthStore.getState().logout();
+
+          if (!mounted) return;
+
+          setInitialMode('ready');
+          return;
+        }
+
+        // Restore session into Zustand.
+        hydrate(persistedUser);
+
+        setInitialMode('ready');
+      } catch (err) {
+        console.error('Authentication initialization failed:', err);
+
+        if (!mounted) return;
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : 'Unable to initialize authentication.',
+        );
+
+        setInitialMode('error');
+      }
+    };
+
     initializeAuthentication();
-  }, []);
 
-  const initializeAuthentication = async () => {
-    try {
-      setMode('loading');
-      setError(null);
+    return () => {
+      mounted = false;
+    };
+  }, [hydrate]);
 
-      // Check whether any users have been created.
-      const users = await container.repositories.user.getAll();
-
-      // First launch: no users exist.
-      if (users.length === 0) {
-        setMode('ownerSetup');
-        return;
-      }
-
-      // Read the persisted session from secure storage.
-      const persistedUserId = await useAuthStore
-        .getState()
-        .getPersistedUserId();
-
-      // No saved session.
-      if (!persistedUserId) {
-        hydrate(null);
-        setMode('login');
-        return;
-      }
-
-      // Validate the persisted user against the local database.
-      const persistedUser = await container.repositories.user.getById(
-        persistedUserId,
-      );
-
-      // Session is invalid, user was deleted, or user was disabled.
-      if (!persistedUser || !persistedUser.active) {
-        await useAuthStore.getState().logout();
-        setMode('login');
-        return;
-      }
-
-      // Restore the user into Zustand.
-      // This does NOT rewrite the Keychain.
-      hydrate(persistedUser);
-
-      setMode('authenticated');
-    } catch (err) {
-      console.error('Authentication initialization failed:', err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Unable to initialize authentication.',
-      );
-
-      setMode('error');
-    }
-  };
-
-  if (mode === 'loading') {
+  if (initialMode === 'loading') {
     return <LoadingScreen />;
   }
 
-  if (mode === 'error') {
+  if (initialMode === 'error') {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
@@ -151,33 +168,27 @@ export function AppNavigator() {
     );
   }
 
-  return (
-    <NavigationContainer>
-      {mode === 'ownerSetup' && (
+  // First launch: owner setup.
+  if (initialMode === 'ownerSetup') {
+    return (
+      <NavigationContainer>
         <Stack.Navigator>
           <Stack.Screen
             name="OwnerSetup"
             component={OwnerSetupScreen}
-            options={{
-              headerShown: false,
-            }}
+            options={{ headerShown: false }}
           />
         </Stack.Navigator>
-      )}
+      </NavigationContainer>
+    );
+  }
 
-      {mode === 'login' && (
-        <Stack.Navigator>
-          <Stack.Screen
-            name="Login"
-            component={LoginScreen}
-            options={{
-              headerShown: false,
-            }}
-          />
-        </Stack.Navigator>
-      )}
-
-      {mode === 'authenticated' && (
+  // No authenticated user: Login.
+  // Authenticated user: render the app.
+  // Zustand changes automatically switch between these navigators.
+  return (
+    <NavigationContainer key={user ? 'authenticated' : 'unauthenticated'}>
+      {user ? (
         <Stack.Navigator>
           <Stack.Screen
             name="Dashboard"
@@ -199,81 +210,71 @@ export function AppNavigator() {
           <Stack.Screen
             name="Members"
             component={MembersScreen}
-            options={{
-              title: 'Members',
-            }}
+            options={{ title: 'Members' }}
           />
 
           <Stack.Screen
             name="AddMember"
             component={AddMemberScreen}
-            options={{
-              title: 'Add Member',
-            }}
+            options={{ title: 'Add Member' }}
           />
 
           <Stack.Screen
             name="MemberDetails"
             component={MemberDetailsScreen}
-            options={{
-              title: 'Member Details',
-            }}
+            options={{ title: 'Member Details' }}
           />
 
           <Stack.Screen
             name="Payments"
             component={PaymentsScreen}
-            options={{
-              title: 'Payments',
-            }}
+            options={{ title: 'Payments' }}
           />
 
           <Stack.Screen
             name="Plans"
             component={PlansScreen}
-            options={{
-              title: 'Membership Plans',
-            }}
+            options={{ title: 'Membership Plans' }}
           />
 
           <Stack.Screen
             name="Birthdays"
             component={BirthdaysScreen}
-            options={{
-              title: 'Birthdays',
-            }}
+            options={{ title: 'Birthdays' }}
           />
 
           <Stack.Screen
             name="Staff"
             component={StaffScreen}
-            options={{
-              title: 'Staff',
-            }}
+            options={{ title: 'Staff' }}
           />
 
           <Stack.Screen
             name="Settings"
             component={SettingsScreen}
-            options={{
-              title: 'Settings',
-            }}
+            options={{ title: 'Settings' }}
           />
+
+          <Stack.Screen name="UpdateTest" component={UpdateTestScreen} />
 
           <Stack.Screen
             name="RenewMembership"
             component={RenewMembershipScreen}
-            options={{
-              title: 'Renew Membership',
-            }}
+            options={{ title: 'Renew Membership' }}
           />
 
           <Stack.Screen
             name="ChangeMembershipPlan"
             component={ChangeMembershipPlanScreen}
-            options={{
-              title: 'Change Membership Plan',
-            }}
+            options={{ title: 'Change Membership Plan' }}
+          />
+        </Stack.Navigator>
+      ) : (
+        <Stack.Navigator>
+          <Stack.Screen
+            name="Login"
+            component={LoginScreen}
+            options={{ headerShown: false }}
           />
         </Stack.Navigator>
       )}

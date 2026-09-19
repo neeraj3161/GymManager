@@ -3,6 +3,7 @@ import {
   Alert,
   Pressable,
   SafeAreaView,
+  Share,
   ScrollView,
   StyleSheet,
   Switch,
@@ -28,6 +29,87 @@ export function SettingsScreen() {
   const [editingProfile, setEditingProfile] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [showCollections, setShowCollections] = useState(false);
+  const loadCollectionSetting = useCallback(async () => {
+    try {
+      const value =
+        await container.useCases.getShowCollectionsSetting.execute();
+      setShowCollections(Boolean(value));
+    } catch (e) {
+      Alert.alert(
+        'Error',
+        e instanceof Error ? e.message : 'Unable to load collection setting',
+      );
+    }
+  }, []);
+  const toggleCollections = async (value: boolean) => {
+    setShowCollections(value);
+    try {
+      await container.useCases.updateShowCollectionsSetting.execute(value);
+    } catch (e) {
+      setShowCollections(!value);
+      Alert.alert(
+        'Error',
+        e instanceof Error ? e.message : 'Unable to save setting',
+      );
+    }
+  };
+  const exportCollection = async (period: 'month' | 'year') => {
+    try {
+      const now = new Date();
+      const start =
+        period === 'month'
+          ? new Date(now.getFullYear(), now.getMonth(), 1)
+          : new Date(now.getFullYear(), 0, 1);
+      const end =
+        period === 'month'
+          ? new Date(now.getFullYear(), now.getMonth() + 1, 1)
+          : new Date(now.getFullYear() + 1, 0, 1);
+      const fmt = (x: Date) =>
+        `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(
+          2,
+          '0',
+        )}-${String(x.getDate()).padStart(2, '0')}`;
+      const report = await container.useCases.getCollectionReport.execute(
+        fmt(start),
+        fmt(end),
+      );
+      const quote = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const data = [
+        [
+          'Payment Date',
+          'Member Name',
+          'Member Number',
+          'Member ID',
+          'Amount',
+          'Payment Method',
+          'Membership ID',
+          'Recorded By',
+          'Notes',
+        ],
+        ...report.payments.map((p: any) => [
+          p.paymentDate,
+          p.memberName,
+          p.memberNumber,
+          p.memberId,
+          p.amount,
+          p.paymentMethod,
+          p.membershipId,
+          p.recordedBy,
+          p.notes,
+        ]),
+      ];
+      await Share.share({
+        title: `${period} collection report`,
+        message: data.map(row => row.map(quote).join(',')).join('\n'),
+      });
+    } catch (e) {
+      Alert.alert(
+        'Export failed',
+        e instanceof Error ? e.message : 'Unable to create report',
+      );
+    }
+  };
 
   const loadGymProfile = useCallback(async () => {
     try {
@@ -57,7 +139,8 @@ export function SettingsScreen() {
   useFocusEffect(
     useCallback(() => {
       loadGymProfile();
-    }, [loadGymProfile]),
+      loadCollectionSetting();
+    }, [loadGymProfile, loadCollectionSetting]),
   );
 
   const saveGymProfile = async () => {
@@ -223,6 +306,27 @@ export function SettingsScreen() {
         />
 
         <ToggleRow title="Fee reminders" subtitle="Remind about overdue fees" />
+
+        <Text style={styles.group}>Collections</Text>
+        <View style={styles.row}>
+          <View style={styles.rowInfo}>
+            <Text style={styles.rowTitle}>Show Collections on Dashboard</Text>
+            <Text style={styles.rowSubtitle}>
+              Show monthly and yearly payments received
+            </Text>
+          </View>
+          <Switch value={showCollections} onValueChange={toggleCollections} />
+        </View>
+        <SettingRow
+          title="Download Monthly Collection"
+          subtitle="Share monthly payment details as CSV"
+          onPress={() => exportCollection('month')}
+        />
+        <SettingRow
+          title="Download Yearly Collection"
+          subtitle="Share yearly payment details as CSV"
+          onPress={() => exportCollection('year')}
+        />
 
         <Text style={styles.group}>Data</Text>
 

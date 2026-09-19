@@ -92,6 +92,14 @@ import { GetSmsTemplatesUseCase } from '../application/sms/GetSmsTemplates';
 import { UpdateSmsTemplateUseCase } from '../application/sms/UpdateSmsTemplate';
 
 import { GetMembersWithFeesDueUseCase } from '../application/members/GetMembersWithFeesDue';
+
+import { SQLiteAppSettingsRepository } from '../infrastructure/database/repositories/SQLiteAppSettingsRepository';
+
+import { GetCollectionReportUseCase } from '../application/use-cases/GetCollectionReport';
+
+import { GetShowCollectionsSettingUseCase } from '../application/use-cases/GetShowCollectionSetting';
+
+import { UpdateShowCollectionsSettingUseCase } from '../application/use-cases/UpdateShowCollectionsSetting';
 // --------------------------------------------------
 // Infrastructure
 // --------------------------------------------------
@@ -169,6 +177,18 @@ const carryForwardMembershipDueUseCase = new CarryForwardMembershipDueUseCase(
   idGenerator,
 );
 
+const appSettingsRepository = new SQLiteAppSettingsRepository(database);
+
+const getCollectionReport = new GetCollectionReportUseCase(paymentRepository);
+
+const getShowCollectionsSetting = new GetShowCollectionsSettingUseCase(
+  appSettingsRepository,
+);
+
+const updateShowCollectionsSetting = new UpdateShowCollectionsSettingUseCase(
+  appSettingsRepository,
+);
+
 // --------------------------------------------------
 // Membership Transition
 // --------------------------------------------------
@@ -218,6 +238,7 @@ export const container = {
     user: userRepository,
     gym: gymRepository,
     smsTemplate: smsTemplateRepository,
+    appSettings: appSettingsRepository,
   },
 
   useCases: {
@@ -324,5 +345,9 @@ export const container = {
     getSmsTemplates: new GetSmsTemplatesUseCase(smsTemplateRepository),
 
     updateSmsTemplate: new UpdateSmsTemplateUseCase(smsTemplateRepository),
+
+    getCollectionReport,
+    getShowCollectionsSetting,
+    updateShowCollectionsSetting,
   },
 };

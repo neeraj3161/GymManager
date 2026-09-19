@@ -32,6 +32,9 @@ export function DashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
+  const [showCollections, setShowCollections] = useState(false);
+  const [monthlyCollection, setMonthlyCollection] = useState(0);
+  const [yearlyCollection, setYearlyCollection] = useState(0);
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -40,6 +43,30 @@ export function DashboardScreen() {
       const result = await container.useCases.getDashboardStats.execute();
 
       setStats(result);
+      const enabled =
+        await container.useCases.getShowCollectionsSetting.execute();
+      setShowCollections(Boolean(enabled));
+      if (enabled) {
+        const now = new Date();
+        const fmt = (x: Date) =>
+          `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(
+            2,
+            '0',
+          )}-${String(x.getDate()).padStart(2, '0')}`;
+        const ms = new Date(now.getFullYear(), now.getMonth(), 1),
+          me = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        const ys = new Date(now.getFullYear(), 0, 1),
+          ye = new Date(now.getFullYear() + 1, 0, 1);
+        const [m, y] = await Promise.all([
+          container.useCases.getCollectionReport.execute(fmt(ms), fmt(me)),
+          container.useCases.getCollectionReport.execute(fmt(ys), fmt(ye)),
+        ]);
+        setMonthlyCollection(m.totalAmount);
+        setYearlyCollection(y.totalAmount);
+      } else {
+        setMonthlyCollection(0);
+        setYearlyCollection(0);
+      }
     } catch (err) {
       console.error('Failed to load dashboard:', err);
 
@@ -137,9 +164,19 @@ export function DashboardScreen() {
         />
 
         <StatCard
+          title="Update Test"
+          value={0}
+          onPress={() => navigation.navigate('UpdateTest')}
+        />
+
+        <StatCard
           title="Expiring Soon"
           value={dashboard.expiringSoon}
-          onPress={() => navigation.navigate('Members')}
+          onPress={() =>
+            navigation.navigate('Members', {
+              filter: 'expiringSoon',
+            })
+          }
         />
 
         {/* IMPORTANT:
@@ -155,6 +192,24 @@ export function DashboardScreen() {
           }
         />
       </View>
+
+      {showCollections && (
+        <>
+          <Text style={styles.sectionTitle}>Collections</Text>
+          <View style={styles.primaryGrid}>
+            <StatCard
+              title="Monthly Collection"
+              value={formatCurrency(monthlyCollection)}
+              onPress={() => navigation.navigate('Payments')}
+            />
+            <StatCard
+              title="Yearly Collection"
+              value={formatCurrency(yearlyCollection)}
+              onPress={() => navigation.navigate('Payments')}
+            />
+          </View>
+        </>
+      )}
 
       <Text style={styles.sectionTitle}>Membership Overview</Text>
 

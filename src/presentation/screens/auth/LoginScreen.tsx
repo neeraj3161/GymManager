@@ -22,31 +22,34 @@ export function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
-    if (!username.trim()) {
-      Alert.alert('Username required', 'Please enter your username.');
-      return;
-    }
+    if (loading) return;
 
-    if (!password) {
-      Alert.alert('Password required', 'Please enter your password.');
+    if (!username.trim() || !password) {
+      Alert.alert('Missing information', 'Enter username and password.');
       return;
     }
 
     try {
       setLoading(true);
 
+      console.log('LOGIN STARTED');
+
       const user = await container.useCases.login.execute({
-        username,
+        username: username.trim(),
         password,
       });
 
-      login(user);
+      console.log('LOGIN SUCCESS: User found', user);
 
-      // Navigation will be connected next.
+      await login(user);
+
+      console.log('SESSION SAVED');
     } catch (error) {
+      console.error('LOGIN ERROR:', error);
+
       Alert.alert(
         'Login failed',
-        error instanceof Error ? error.message : 'Unable to sign in.',
+        error instanceof Error ? error.message : String(error),
       );
     } finally {
       setLoading(false);
