@@ -40,17 +40,52 @@ export class GetDashboardStatsUseCase {
         ) AS disabled_members,
 
         (
-          SELECT COALESCE(SUM(m.amount), 0)
+          SELECT COALESCE(
+            SUM(
+              CASE
+                WHEN m.amount
+                  + COALESCE(m.adjustment_amount, 0)
+                  + COALESCE(a.adjustments, 0)
+                  - COALESCE(p.paid, 0) > 0
+                THEN m.amount
+                  + COALESCE(m.adjustment_amount, 0)
+                  + COALESCE(a.adjustments, 0)
+                  - COALESCE(p.paid, 0)
+                ELSE 0
+              END
+            ),
+            0
+          )
           FROM memberships m
           LEFT JOIN (
             SELECT
-              member_id,
+              membership_id,
               COALESCE(SUM(amount), 0) AS paid
             FROM payments
-            GROUP BY member_id
-          ) p ON p.member_id = m.member_id
-          WHERE m.end_date >= date('now', 'localtime')
-            AND COALESCE(p.paid, 0) < m.amount
+            GROUP BY membership_id
+          ) p ON p.membership_id = m.id
+          LEFT JOIN (
+            SELECT
+              membership_id,
+              COALESCE(SUM(amount), 0) AS adjustments
+            FROM membership_adjustments
+            GROUP BY membership_id
+          ) a ON a.membership_id = m.id
+          WHERE m.id = (
+            SELECT current_membership.id
+            FROM memberships current_membership
+            WHERE current_membership.member_id = m.member_id
+              AND date(current_membership.start_date) <= date('now', 'localtime')
+            ORDER BY
+              CASE WHEN current_membership.status = 'active' THEN 0 ELSE 1 END,
+              date(current_membership.start_date) DESC,
+              datetime(current_membership.created_at) DESC
+            LIMIT 1
+          )
+            AND m.amount
+              + COALESCE(m.adjustment_amount, 0)
+              + COALESCE(a.adjustments, 0)
+              - COALESCE(p.paid, 0) > 0
         ) AS fees_due,
 
         (
@@ -63,14 +98,20 @@ export class GetDashboardStatsUseCase {
 
         (
           SELECT COUNT(DISTINCT m.member_id)
-          FROM memberships m
-          INNER JOIN members mem
-            ON mem.id = m.member_id
+          FROM members mem
+          INNER JOIN memberships m
+            ON m.id = (
+              SELECT current_membership.id
+              FROM memberships current_membership
+              WHERE current_membership.member_id = mem.id
+              ORDER BY
+                CASE WHEN current_membership.status = 'active' THEN 0 ELSE 1 END,
+                date(current_membership.start_date) DESC,
+                datetime(current_membership.created_at) DESC
+              LIMIT 1
+            )
           WHERE mem.status = 'active'
-            AND m.status = 'active'
-            AND date(m.end_date)
-                BETWEEN date('now', 'localtime')
-                    AND date('now', 'localtime', '+7 days')
+            AND date(m.end_date) <= date('now', 'localtime', '+7 days')
         ) AS expiring_soon
     `);
 

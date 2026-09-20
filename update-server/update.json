@@ -1,8 +1,8 @@
 {
-  "versionCode": 2,
-  "versionName": "1.0.1",
-  "apkUrl": "http://10.0.2.2:8080/gymmanager-1.0.1.apk",
-  "fileName": "gymmanager-1.0.1.apk",
+  "versionCode": 3,
+  "versionName": "1.0.2",
+  "apkUrl": "http://10.0.2.2:8080/apk/gymmanager-1.0.2.apk",
+  "fileName": "gymmanager-1.0.2.apk",
   "mandatory": false,
-  "releaseNotes": "Auto-updater test build"
+  "releaseNotes": "Update test build 1.0.2"
 }

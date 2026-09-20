@@ -1,9 +1,10 @@
 import React, { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  Modal,
   Pressable,
   SafeAreaView,
-  Share,
   ScrollView,
   StyleSheet,
   Switch,
@@ -15,6 +16,12 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
 import { container } from '../../../di/container';
 import { useAuthStore } from '../../../store/authStore';
+
+import {
+  AppUpdateInfo,
+  appUpdateService,
+} from '../../../services/appUpdateService';
+import { exportCollectionPdf } from '../../../infrastructure/reports/exportCollectionPdf';
 
 export function SettingsScreen() {
   const navigation = useNavigation<any>();
@@ -30,10 +37,20 @@ export function SettingsScreen() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [showCollections, setShowCollections] = useState(false);
+
+  // App updater state
+  const [checkingForUpdate, setCheckingForUpdate] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+
+  // ---------------------------------------------------------------------------
+  // Collection settings
+  // ---------------------------------------------------------------------------
+
   const loadCollectionSetting = useCallback(async () => {
     try {
       const value =
         await container.useCases.getShowCollectionsSetting.execute();
+
       setShowCollections(Boolean(value));
     } catch (e) {
       Alert.alert(
@@ -42,67 +59,59 @@ export function SettingsScreen() {
       );
     }
   }, []);
+
   const toggleCollections = async (value: boolean) => {
     setShowCollections(value);
+
     try {
       await container.useCases.updateShowCollectionsSetting.execute(value);
     } catch (e) {
       setShowCollections(!value);
+
       Alert.alert(
         'Error',
         e instanceof Error ? e.message : 'Unable to save setting',
       );
     }
   };
+
+  // ---------------------------------------------------------------------------
+  // Collection export
+  // ---------------------------------------------------------------------------
+
   const exportCollection = async (period: 'month' | 'year') => {
     try {
       const now = new Date();
+
       const start =
         period === 'month'
           ? new Date(now.getFullYear(), now.getMonth(), 1)
           : new Date(now.getFullYear(), 0, 1);
+
       const end =
         period === 'month'
           ? new Date(now.getFullYear(), now.getMonth() + 1, 1)
           : new Date(now.getFullYear() + 1, 0, 1);
+
       const fmt = (x: Date) =>
         `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(
           2,
           '0',
         )}-${String(x.getDate()).padStart(2, '0')}`;
+
       const report = await container.useCases.getCollectionReport.execute(
         fmt(start),
         fmt(end),
       );
-      const quote = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-      const data = [
-        [
-          'Payment Date',
-          'Member Name',
-          'Member Number',
-          'Member ID',
-          'Amount',
-          'Payment Method',
-          'Membership ID',
-          'Recorded By',
-          'Notes',
-        ],
-        ...report.payments.map((p: any) => [
-          p.paymentDate,
-          p.memberName,
-          p.memberNumber,
-          p.memberId,
-          p.amount,
-          p.paymentMethod,
-          p.membershipId,
-          p.recordedBy,
-          p.notes,
-        ]),
-      ];
-      await Share.share({
-        title: `${period} collection report`,
-        message: data.map(row => row.map(quote).join(',')).join('\n'),
-      });
+
+      const monthName = now.toLocaleDateString('en-IN', { month: 'long' });
+      const title =
+        period === 'month'
+          ? `${monthName} ${now.getFullYear()} Collection`
+          : `${now.getFullYear()} Collection`;
+      const fileName = `gymmanager-${period}-collection-${now.getFullYear()}.pdf`;
+
+      await exportCollectionPdf(report, title, fileName);
     } catch (e) {
       Alert.alert(
         'Export failed',
@@ -110,6 +119,10 @@ export function SettingsScreen() {
       );
     }
   };
+
+  // ---------------------------------------------------------------------------
+  // Gym profile
+  // ---------------------------------------------------------------------------
 
   const loadGymProfile = useCallback(async () => {
     try {
@@ -173,6 +186,46 @@ export function SettingsScreen() {
     }
   };
 
+  // ---------------------------------------------------------------------------
+  // App updater
+  // ---------------------------------------------------------------------------
+
+  const handleCheckForUpdates = async () => {
+    if (checkingForUpdate) {
+      return;
+    }
+
+    try {
+      setCheckingForUpdate(true);
+
+      const result = await appUpdateService.check();
+
+      if (!result) {
+        Alert.alert(
+          'No update available',
+          'You are using the latest version of Gym Manager.',
+        );
+
+        return;
+      }
+
+      setUpdateInfo(result);
+    } catch (error) {
+      console.error('Update check failed:', error);
+
+      Alert.alert(
+        'Update check failed',
+        error instanceof Error ? error.message : 'Unable to check for updates.',
+      );
+    } finally {
+      setCheckingForUpdate(false);
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // Loading state
+  // ---------------------------------------------------------------------------
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -183,6 +236,10 @@ export function SettingsScreen() {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Screen
+  // ---------------------------------------------------------------------------
+
   return (
     <SafeAreaView style={styles.safe}>
       <ScrollView
@@ -190,9 +247,14 @@ export function SettingsScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Text style={styles.title}>Settings</Text>
+
         <Text style={styles.subtitle}>
           Manage your gym and application settings
         </Text>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Gym                                                               */}
+        {/* ---------------------------------------------------------------- */}
 
         <Text style={styles.group}>Gym</Text>
 
@@ -298,6 +360,10 @@ export function SettingsScreen() {
           onPress={() => navigation.navigate('Plans')}
         />
 
+        {/* ---------------------------------------------------------------- */}
+        {/* Reminders                                                         */}
+        {/* ---------------------------------------------------------------- */}
+
         <Text style={styles.group}>Reminders</Text>
 
         <ToggleRow
@@ -307,26 +373,39 @@ export function SettingsScreen() {
 
         <ToggleRow title="Fee reminders" subtitle="Remind about overdue fees" />
 
+        {/* ---------------------------------------------------------------- */}
+        {/* Collections                                                       */}
+        {/* ---------------------------------------------------------------- */}
+
         <Text style={styles.group}>Collections</Text>
+
         <View style={styles.row}>
           <View style={styles.rowInfo}>
             <Text style={styles.rowTitle}>Show Collections on Dashboard</Text>
+
             <Text style={styles.rowSubtitle}>
               Show monthly and yearly payments received
             </Text>
           </View>
+
           <Switch value={showCollections} onValueChange={toggleCollections} />
         </View>
+
         <SettingRow
           title="Download Monthly Collection"
-          subtitle="Share monthly payment details as CSV"
+          subtitle="Save a monthly collection PDF with insights"
           onPress={() => exportCollection('month')}
         />
+
         <SettingRow
           title="Download Yearly Collection"
-          subtitle="Share yearly payment details as CSV"
+          subtitle="Save a yearly collection PDF with insights"
           onPress={() => exportCollection('year')}
         />
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Data                                                              */}
+        {/* ---------------------------------------------------------------- */}
 
         <Text style={styles.group}>Data</Text>
 
@@ -336,7 +415,22 @@ export function SettingsScreen() {
           onPress={() => navigation.navigate('Backup')}
         />
 
+        {/* ---------------------------------------------------------------- */}
+        {/* Application                                                       */}
+        {/* ---------------------------------------------------------------- */}
+
         <Text style={styles.group}>Application</Text>
+
+        <SettingRow
+          title="Check for updates"
+          subtitle={
+            checkingForUpdate
+              ? 'Checking for updates...'
+              : 'Check for a newer version of Gym Manager'
+          }
+          onPress={handleCheckForUpdates}
+          disabled={checkingForUpdate}
+        />
 
         <SettingRow
           title="About Gym Manager"
@@ -345,6 +439,10 @@ export function SettingsScreen() {
             Alert.alert('Gym Manager', 'Local-first gym management app.')
           }
         />
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Account                                                           */}
+        {/* ---------------------------------------------------------------- */}
 
         <Text style={styles.group}>Account</Text>
 
@@ -378,23 +476,43 @@ export function SettingsScreen() {
           <Text style={styles.logoutButtonText}>Log out</Text>
         </Pressable>
       </ScrollView>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Update Modal                                                        */}
+      {/* ------------------------------------------------------------------ */}
+
+      <AppUpdateModal
+        updateInfo={updateInfo}
+        onClose={() => setUpdateInfo(null)}
+      />
     </SafeAreaView>
   );
 }
+
+// ============================================================================
+// Setting Row
+// ============================================================================
 
 function SettingRow({
   title,
   subtitle,
   onPress,
+  disabled = false,
 }: {
   title: string;
   subtitle: string;
   onPress: () => void;
+  disabled?: boolean;
 }) {
   return (
-    <Pressable style={styles.row} onPress={onPress}>
+    <Pressable
+      style={[styles.row, disabled && styles.rowDisabled]}
+      onPress={onPress}
+      disabled={disabled}
+    >
       <View style={styles.rowInfo}>
         <Text style={styles.rowTitle}>{title}</Text>
+
         <Text style={styles.rowSubtitle}>{subtitle}</Text>
       </View>
 
@@ -403,6 +521,10 @@ function SettingRow({
   );
 }
 
+// ============================================================================
+// Toggle Row
+// ============================================================================
+
 function ToggleRow({ title, subtitle }: { title: string; subtitle: string }) {
   const [enabled, setEnabled] = useState(true);
 
@@ -410,6 +532,7 @@ function ToggleRow({ title, subtitle }: { title: string; subtitle: string }) {
     <View style={styles.row}>
       <View style={styles.rowInfo}>
         <Text style={styles.rowTitle}>{title}</Text>
+
         <Text style={styles.rowSubtitle}>{subtitle}</Text>
       </View>
 
@@ -417,6 +540,121 @@ function ToggleRow({ title, subtitle }: { title: string; subtitle: string }) {
     </View>
   );
 }
+
+// ============================================================================
+// Update Modal
+// ============================================================================
+
+function AppUpdateModal({
+  updateInfo,
+  onClose,
+}: {
+  updateInfo: AppUpdateInfo | null;
+  onClose: () => void;
+}) {
+  const [updating, setUpdating] = useState(false);
+
+  const [error, setError] = useState<string | null>(null);
+
+  if (!updateInfo) {
+    return null;
+  }
+
+  const { update } = updateInfo;
+
+  const handleUpdate = async () => {
+    if (updating) {
+      return;
+    }
+
+    try {
+      setError(null);
+      setUpdating(true);
+
+      await appUpdateService.downloadAndInstall(update);
+
+      // Android installer should now be open.
+      onClose();
+    } catch (err) {
+      console.error('App update failed:', err);
+
+      setUpdating(false);
+
+      setError(
+        err instanceof Error ? err.message : 'Unable to install the update.',
+      );
+    }
+  };
+
+  return (
+    <Modal
+      visible
+      transparent
+      animationType="fade"
+      onRequestClose={() => {
+        if (!update.mandatory && !updating) {
+          onClose();
+        }
+      }}
+    >
+      <View style={styles.updateOverlay}>
+        <View style={styles.updateCard}>
+          <Text style={styles.updateTitle}>New update available</Text>
+
+          <Text style={styles.updateVersion}>Version {update.versionName}</Text>
+
+          <Text style={styles.updateCurrentVersion}>
+            Current version: {updateInfo.currentVersionName}
+          </Text>
+
+          {update.releaseNotes ? (
+            <View style={styles.updateNotesContainer}>
+              <Text style={styles.updateNotesTitle}>What's new</Text>
+
+              <Text style={styles.updateNotes}>{update.releaseNotes}</Text>
+            </View>
+          ) : null}
+
+          {error ? <Text style={styles.updateError}>{error}</Text> : null}
+
+          {updating ? (
+            <View style={styles.updateProgress}>
+              <ActivityIndicator size="large" />
+
+              <Text style={styles.updateProgressText}>
+                Downloading update...
+              </Text>
+
+              <Text style={styles.updateSubText}>
+                Android installer will open when the download finishes.
+              </Text>
+            </View>
+          ) : (
+            <>
+              <Pressable style={styles.updateButton} onPress={handleUpdate}>
+                <Text style={styles.updateButtonText}>Update</Text>
+              </Pressable>
+
+              {!update.mandatory ? (
+                <Pressable style={styles.laterButton} onPress={onClose}>
+                  <Text style={styles.laterButtonText}>Later</Text>
+                </Pressable>
+              ) : (
+                <Text style={styles.mandatoryText}>
+                  This update is required.
+                </Text>
+              )}
+            </>
+          )}
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+// ============================================================================
+// Styles
+// ============================================================================
 
 const styles = StyleSheet.create({
   safe: {
@@ -564,6 +802,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
+  rowDisabled: {
+    opacity: 0.6,
+  },
+
   rowInfo: {
     flex: 1,
   },
@@ -608,5 +850,122 @@ const styles = StyleSheet.create({
   loadingText: {
     color: '#6B7280',
     fontSize: 14,
+  },
+
+  // --------------------------------------------------------------------------
+  // Update modal
+  // --------------------------------------------------------------------------
+
+  updateOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    padding: 24,
+  },
+
+  updateCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+  },
+
+  updateTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 8,
+  },
+
+  updateVersion: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 4,
+  },
+
+  updateCurrentVersion: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginBottom: 20,
+  },
+
+  updateNotesContainer: {
+    marginBottom: 20,
+  },
+
+  updateNotesTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+    marginBottom: 6,
+  },
+
+  updateNotes: {
+    fontSize: 14,
+    lineHeight: 20,
+    color: '#374151',
+  },
+
+  updateError: {
+    color: '#C62828',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+
+  updateProgress: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+
+  updateProgressText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+    marginTop: 12,
+  },
+
+  updateSubText: {
+    fontSize: 13,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+
+  updateButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+    borderRadius: 10,
+    backgroundColor: '#111827',
+    marginTop: 8,
+  },
+
+  updateButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  laterButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+    marginTop: 8,
+  },
+
+  laterButtonText: {
+    fontSize: 15,
+    color: '#666666',
+  },
+
+  mandatoryText: {
+    textAlign: 'center',
+    fontSize: 13,
+    color: '#666666',
+    marginTop: 12,
   },
 });

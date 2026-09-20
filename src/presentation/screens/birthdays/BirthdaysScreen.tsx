@@ -139,17 +139,23 @@ export function BirthdaysScreen() {
         `whatsapp://send?phone=${phone}` +
         `&text=${encodeURIComponent(message)}`;
 
-      const supported = await Linking.canOpenURL(url);
-
-      if (!supported) {
-        Alert.alert(
-          'WhatsApp unavailable',
-          'WhatsApp is not installed or cannot be opened on this device.',
-        );
+      if (await Linking.canOpenURL(url)) {
+        await Linking.openURL(url);
         return;
       }
 
-      await Linking.openURL(url);
+      const webUrl = `https://wa.me/${phone}?text=${encodeURIComponent(
+        message,
+      )}`;
+
+      if (await Linking.canOpenURL(webUrl)) {
+        await Linking.openURL(webUrl);
+        return;
+      }
+
+      throw new Error(
+        'WhatsApp is not installed and a browser is unavailable.',
+      );
     } catch (error) {
       Alert.alert(
         'Unable to open WhatsApp',
@@ -174,17 +180,12 @@ export function BirthdaysScreen() {
 
       const url = `tel:${cleanedPhone}`;
 
-      const supported = await Linking.canOpenURL(url);
-
-      if (!supported) {
-        Alert.alert(
-          'Unable to call',
-          'Calling is not available on this device.',
-        );
+      if (await Linking.canOpenURL(url)) {
+        await Linking.openURL(url);
         return;
       }
 
-      await Linking.openURL(url);
+      await Linking.openURL(`tel:${cleanedPhone}`);
     } catch {
       Alert.alert('Unable to call', 'Could not open the phone application.');
     }
@@ -195,7 +196,7 @@ export function BirthdaysScreen() {
       const gymName = await getGymName();
       const name = getFullName(birthday);
 
-      const phone = birthday.member.phone.replace(/\D/g, '');
+      const phone = birthday.member.phone.replace(/[^+\d]/g, '');
 
       if (!phone) {
         Alert.alert(
@@ -207,17 +208,7 @@ export function BirthdaysScreen() {
 
       const message = buildBirthdayMessage(name, gymName);
 
-      const url = `sms:${phone}` + `?body=${encodeURIComponent(message)}`;
-
-      const supported = await Linking.canOpenURL(url);
-
-      if (!supported) {
-        Alert.alert(
-          'Unable to send SMS',
-          'SMS is not available on this device.',
-        );
-        return;
-      }
+      const url = `sms:${phone}?body=${encodeURIComponent(message)}`;
 
       await Linking.openURL(url);
     } catch (error) {

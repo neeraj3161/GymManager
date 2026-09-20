@@ -25,8 +25,10 @@ export interface ProcessMembershipTransitionInput {
   writeOffNotes?: string;
 
   applyUnusedCredit?: boolean;
+  previousMembershipFullyPaid?: boolean;
 
   recordedBy: string;
+  startDate?: string;
 }
 
 export class ProcessMembershipTransitionUseCase {
@@ -106,11 +108,14 @@ export class ProcessMembershipTransitionUseCase {
         memberId: input.memberId,
         newPlanId: input.planId,
         applyUnusedCredit: true,
+        previousMembershipFullyPaid: input.previousMembershipFullyPaid,
+        startDate: input.startDate,
       });
     } else {
       result = await this.renewMembership.execute({
         memberId: input.memberId,
         planId: input.planId,
+        startDate: input.startDate,
       });
     }
 
@@ -128,11 +133,18 @@ export class ProcessMembershipTransitionUseCase {
       const newMembershipId =
         'membership' in result ? result.membership.id : result.id;
 
-      await this.carryForwardMembershipDue.execute({
+      const transferIn = await this.carryForwardMembershipDue.execute({
         previousMembershipId: input.previousMembershipId,
         newMembershipId,
         createdBy: input.recordedBy,
       });
+
+      if ('finalAmount' in result) {
+        return {
+          ...result,
+          finalAmount: result.finalAmount + transferIn.amount,
+        };
+      }
     }
 
     return result;

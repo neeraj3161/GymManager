@@ -1,4 +1,7 @@
 import { SQLiteDatabase } from '../infrastructure/database/SQLiteDatabase';
+import { ExportDatabaseUseCase } from '../application/backup/ExportDatabase';
+import { RestoreDatabaseUseCase } from '../application/backup/RestoreDatabase';
+import { SQLiteBackupService } from '../infrastructure/backup/SQLiteBackupService';
 
 // --------------------------------------------------
 // Repositories
@@ -105,6 +108,7 @@ import { UpdateShowCollectionsSettingUseCase } from '../application/use-cases/Up
 // --------------------------------------------------
 
 const database = new SQLiteDatabase();
+const backupService = new SQLiteBackupService(database);
 
 const idGenerator = new IdGeneratorImpl();
 
@@ -151,6 +155,8 @@ const renewMembershipUseCase = new RenewMembershipUseCase(
 const changeMembershipPlanUseCase = new ChangeMembershipPlanUseCase(
   membershipRepository,
   planRepository,
+  paymentRepository,
+  membershipAdjustmentRepository,
   idGenerator,
 );
 
@@ -349,5 +355,7 @@ export const container = {
     getCollectionReport,
     getShowCollectionsSetting,
     updateShowCollectionsSetting,
+    exportDatabase: new ExportDatabaseUseCase(backupService),
+    restoreDatabase: new RestoreDatabaseUseCase(backupService),
   },
 };

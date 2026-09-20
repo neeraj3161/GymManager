@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -16,9 +19,7 @@ export function LoginScreen() {
   const login = useAuthStore(state => state.login);
 
   const [username, setUsername] = useState('');
-
   const [password, setPassword] = useState('');
-
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async () => {
@@ -58,42 +59,58 @@ export function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
-        <Text style={styles.logo}>Gym Manager</Text>
-
-        <Text style={styles.subtitle}>Sign in to your gym</Text>
-
-        <Text style={styles.label}>Username</Text>
-
-        <TextInput
-          value={username}
-          onChangeText={setUsername}
-          placeholder="Username"
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={styles.input}
-        />
-
-        <Text style={styles.label}>Password</Text>
-
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Password"
-          secureTextEntry
-          style={styles.input}
-        />
-
-        <Pressable
-          style={[styles.button, loading && styles.disabledButton]}
-          onPress={handleLogin}
-          disabled={loading}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.buttonText}>
-            {loading ? 'Signing In...' : 'Sign In'}
-          </Text>
-        </Pressable>
-      </View>
+          <View style={styles.container}>
+            <Text style={styles.logo}>Gym Manager</Text>
+
+            <Text style={styles.subtitle}>Sign in to your gym</Text>
+
+            <Text style={styles.label}>Username</Text>
+
+            <TextInput
+              value={username}
+              onChangeText={setUsername}
+              placeholder="Username"
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="next"
+              style={styles.input}
+            />
+
+            <Text style={styles.label}>Password</Text>
+
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Password"
+              secureTextEntry
+              returnKeyType="done"
+              onSubmitEditing={handleLogin}
+              style={styles.input}
+            />
+
+            <Pressable
+              style={[styles.button, loading && styles.disabledButton]}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              <Text style={styles.buttonText}>
+                {loading ? 'Signing In...' : 'Sign In'}
+              </Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -104,10 +121,22 @@ const styles = StyleSheet.create({
     backgroundColor: '#F6F7F9',
   },
 
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+
+  scrollView: {
+    flex: 1,
+  },
+
+  scrollContent: {
+    flexGrow: 1,
+  },
+
   container: {
+    flexGrow: 1,
     padding: 24,
     justifyContent: 'center',
-    flex: 1,
   },
 
   logo: {
@@ -134,6 +163,7 @@ const styles = StyleSheet.create({
     borderRadius: 13,
     paddingHorizontal: 14,
     marginBottom: 17,
+    color: '#111827',
   },
 
   button: {

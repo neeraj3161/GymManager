@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -22,6 +25,13 @@ export function OwnerSetupScreen() {
   const [loading, setLoading] = useState(false);
 
   const handleCreateOwner = async () => {
+    if (loading) return;
+
+    if (!name.trim() || !username.trim() || !password || !confirmPassword) {
+      Alert.alert('Missing information', 'Please fill in all fields.');
+      return;
+    }
+
     if (password !== confirmPassword) {
       Alert.alert(
         'Passwords do not match',
@@ -34,12 +44,12 @@ export function OwnerSetupScreen() {
       setLoading(true);
 
       const user = await container.useCases.createOwner.execute({
-        name,
-        username,
+        name: name.trim(),
+        username: username.trim(),
         password,
       });
 
-      login(user);
+      await login(user);
 
       Alert.alert(
         'Owner account created',
@@ -59,63 +69,81 @@ export function OwnerSetupScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.container}>
-        <Text style={styles.logo}>Gym Manager</Text>
-
-        <Text style={styles.title}>Set up your gym</Text>
-
-        <Text style={styles.subtitle}>Create the first owner account.</Text>
-
-        <Text style={styles.label}>Your Name</Text>
-
-        <TextInput
-          value={name}
-          onChangeText={setName}
-          placeholder="Enter your name"
-          style={styles.input}
-        />
-
-        <Text style={styles.label}>Username</Text>
-
-        <TextInput
-          value={username}
-          onChangeText={setUsername}
-          placeholder="Choose a username"
-          autoCapitalize="none"
-          autoCorrect={false}
-          style={styles.input}
-        />
-
-        <Text style={styles.label}>Password</Text>
-
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          placeholder="Create a password"
-          secureTextEntry
-          style={styles.input}
-        />
-
-        <Text style={styles.label}>Confirm Password</Text>
-
-        <TextInput
-          value={confirmPassword}
-          onChangeText={setConfirmPassword}
-          placeholder="Confirm your password"
-          secureTextEntry
-          style={styles.input}
-        />
-
-        <Pressable
-          style={[styles.button, loading && styles.disabledButton]}
-          onPress={handleCreateOwner}
-          disabled={loading}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          showsVerticalScrollIndicator={false}
         >
-          <Text style={styles.buttonText}>
-            {loading ? 'Creating...' : 'Create Owner Account'}
-          </Text>
-        </Pressable>
-      </View>
+          <View style={styles.container}>
+            <Text style={styles.logo}>Gym Manager</Text>
+
+            <Text style={styles.title}>Set up your gym</Text>
+
+            <Text style={styles.subtitle}>Create the first owner account.</Text>
+
+            <Text style={styles.label}>Your Name</Text>
+
+            <TextInput
+              value={name}
+              onChangeText={setName}
+              placeholder="Enter your name"
+              returnKeyType="next"
+              style={styles.input}
+            />
+
+            <Text style={styles.label}>Username</Text>
+
+            <TextInput
+              value={username}
+              onChangeText={setUsername}
+              placeholder="Choose a username"
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="next"
+              style={styles.input}
+            />
+
+            <Text style={styles.label}>Password</Text>
+
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              placeholder="Create a password"
+              secureTextEntry
+              returnKeyType="next"
+              style={styles.input}
+            />
+
+            <Text style={styles.label}>Confirm Password</Text>
+
+            <TextInput
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              placeholder="Confirm your password"
+              secureTextEntry
+              returnKeyType="done"
+              onSubmitEditing={handleCreateOwner}
+              style={styles.input}
+            />
+
+            <Pressable
+              style={[styles.button, loading && styles.disabledButton]}
+              onPress={handleCreateOwner}
+              disabled={loading}
+            >
+              <Text style={styles.buttonText}>
+                {loading ? 'Creating...' : 'Create Owner Account'}
+              </Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -126,10 +154,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#F6F7F9',
   },
 
-  container: {
+  keyboardAvoidingView: {
     flex: 1,
+  },
+
+  scrollView: {
+    flex: 1,
+  },
+
+  scrollContent: {
+    flexGrow: 1,
+  },
+
+  container: {
+    flexGrow: 1,
     justifyContent: 'center',
     padding: 24,
+    paddingBottom: 40,
   },
 
   logo: {

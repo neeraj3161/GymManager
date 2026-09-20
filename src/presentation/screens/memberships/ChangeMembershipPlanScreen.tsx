@@ -19,9 +19,14 @@ import { MembershipPlan } from '../../../domain/entities/MembershipPlan';
 import { Membership } from '../../../domain/entities/Membership';
 import { container } from '../../../di/container';
 import { PreviousDueSection } from '../../components/PreviousDueSection';
+import {
+  MembershipStartDateOption,
+  MembershipStartDateSection,
+} from '../../components/MembershipStartDateSection';
 
 import type { PreviousDueAction } from '../../components/PreviousDueSection';
 import { PaymentMethod } from '../../../domain/entities/Payment';
+import { useAuthStore } from '../../../store/authStore';
 
 type RouteParams = {
   memberId: string;
@@ -32,10 +37,13 @@ export function ChangeMembershipPlanScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const { memberId, memberName } = route.params as RouteParams;
+  const currentUser = useAuthStore(state => state.user);
 
   const [currentMembership, setCurrentMembership] = useState<Membership | null>(
     null,
   );
+  const [startDateOption, setStartDateOption] =
+    useState<MembershipStartDateOption>('today');
 
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
@@ -66,6 +74,11 @@ export function ChangeMembershipPlanScreen() {
       ]);
 
       setCurrentMembership(currentMembership);
+      if (currentMembership) {
+        setStartDateOption(
+          isExpired(currentMembership.endDate) ? 'previous_end' : 'today',
+        );
+      }
 
       // ADD THIS HERE
       if (currentMembership) {
@@ -88,7 +101,12 @@ export function ChangeMembershipPlanScreen() {
 
       // whatever else your existing load() does...
     } catch (error) {
-      // existing error handling
+      Alert.alert(
+        'Error',
+        error instanceof Error
+          ? error.message
+          : 'Unable to load membership information.',
+      );
     } finally {
       setLoading(false);
     }
@@ -107,11 +125,14 @@ export function ChangeMembershipPlanScreen() {
       return;
     }
 
-    const result = calculateUnusedCredit(currentMembership);
+    const result =
+      previousDue > 0
+        ? { unusedDays: 0, unusedCredit: 0 }
+        : calculateUnusedCredit(currentMembership);
 
     setUnusedDays(result.unusedDays);
     setUnusedCredit(result.unusedCredit);
-  }, [currentMembership, selectedPlanId, selectedPlan]);
+  }, [currentMembership, previousDue, selectedPlanId, selectedPlan]);
 
   const calculateUnusedCredit = (membership: Membership) => {
     const today = startOfDay(new Date());
@@ -182,20 +203,48 @@ export function ChangeMembershipPlanScreen() {
             try {
               setChanging(true);
 
+              if (!currentUser) {
+                throw new Error('Unable to identify the staff user.');
+              }
+
               const result =
-                await container.useCases.changeMembershipPlan.execute({
+                await container.useCases.processMembershipTransition.execute({
                   memberId,
-                  newPlanId: selectedPlan.id,
+                  planId: selectedPlan.id,
+                  previousDueAction:
+                    previousDue > 0 ? previousDueAction : 'none',
+                  previousMembershipId: currentMembership.id,
+                  collectAmount:
+                    previousDueAction === 'collect'
+                      ? Number(collectAmount)
+                      : undefined,
+                  paymentMethod:
+                    previousDueAction === 'collect' ? paymentMethod : undefined,
+                  writeOffReason:
+                    previousDueAction === 'write_off'
+                      ? writeOffReason
+                      : undefined,
+                  startDate:
+                    startDateOption === 'previous_end'
+                      ? currentMembership.endDate
+                      : new Date().toISOString(),
+                  recordedBy: currentUser.id,
                   applyUnusedCredit: true,
+                  previousMembershipFullyPaid: previousDue <= 0,
                 });
+
+              const resultUnusedCredit =
+                'unusedCredit' in result ? result.unusedCredit : 0;
+              const resultFinalAmount =
+                'finalAmount' in result ? result.finalAmount : finalAmount;
 
               Alert.alert(
                 'Plan Changed',
                 `Membership changed to ${selectedPlan.name}.\n\n` +
-                  `Unused credit: ₹${result.unusedCredit.toLocaleString(
+                  `Unused credit: ₹${resultUnusedCredit.toLocaleString(
                     'en-IN',
                   )}\n` +
-                  `Amount to pay: ₹${result.finalAmount.toLocaleString(
+                  `Amount to pay: ₹${resultFinalAmount.toLocaleString(
                     'en-IN',
                   )}`,
                 [
@@ -291,6 +340,12 @@ export function ChangeMembershipPlanScreen() {
           onPaymentMethodChange={setPaymentMethod}
           writeOffReason={writeOffReason}
           onWriteOffReasonChange={setWriteOffReason}
+        />
+
+        <MembershipStartDateSection
+          previousEndDate={currentMembership.endDate}
+          selected={startDateOption}
+          onChange={setStartDateOption}
         />
 
         <Text style={styles.sectionHeading}>Select New Plan</Text>
@@ -421,6 +476,14 @@ function formatDate(date: string): string {
     month: 'short',
     year: 'numeric',
   });
+}
+
+function isExpired(endDate: string): boolean {
+  const end = new Date(endDate);
+  const today = new Date();
+  end.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  return end < today;
 }
 
 const styles = StyleSheet.create({

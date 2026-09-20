@@ -84,6 +84,39 @@ export class SQLiteMembershipAdjustmentRepository
     }));
   }
 
+  async getByMemberId(memberId: string): Promise<MembershipAdjustment[]> {
+    const rows = await this.database.query<MembershipAdjustmentRow>(
+      `
+        SELECT
+          id,
+          membership_id,
+          member_id,
+          type,
+          amount,
+          reason,
+          notes,
+          created_by,
+          created_at
+        FROM membership_adjustments
+        WHERE member_id = ?
+        ORDER BY created_at DESC
+      `,
+      [memberId],
+    );
+
+    return rows.map(row => ({
+      id: row.id,
+      membershipId: row.membership_id,
+      memberId: row.member_id,
+      type: row.type,
+      amount: row.amount,
+      reason: row.reason ?? undefined,
+      notes: row.notes ?? undefined,
+      createdBy: row.created_by,
+      createdAt: row.created_at,
+    }));
+  }
+
   async getTotalByMembershipId(membershipId: string): Promise<number> {
     const rows = await this.database.query<{
       total: number | null;

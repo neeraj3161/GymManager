@@ -1,12 +1,16 @@
 import { Membership } from '../../domain/entities/Membership';
 import { MembershipRepository } from '../../domain/repositories/MembershipRepository';
 import { PlanRepository } from '../../domain/repositories/PlanRepository';
+import { PaymentRepository } from '../../domain/repositories/PaymentRepository';
+import { MembershipAdjustmentRepository } from '../../domain/repositories/MembershipAdjustmentRepository';
 import { IdGenerator } from '../shared/IdGenerator';
 
 export interface ChangeMembershipPlanInput {
   memberId: string;
   newPlanId: string;
   applyUnusedCredit: boolean;
+  previousMembershipFullyPaid?: boolean;
+  startDate?: string;
 }
 
 export interface MembershipPlanChangeResult {
@@ -20,6 +24,8 @@ export class ChangeMembershipPlanUseCase {
   constructor(
     private readonly membershipRepository: MembershipRepository,
     private readonly planRepository: PlanRepository,
+    private readonly paymentRepository: PaymentRepository,
+    private readonly adjustmentRepository: MembershipAdjustmentRepository,
     private readonly idGenerator: IdGenerator,
   ) {}
 
@@ -53,8 +59,27 @@ export class ChangeMembershipPlanUseCase {
     let unusedDays = 0;
     let unusedCredit = 0;
 
+    const totalPaid = await this.paymentRepository.getTotalPaidByMembership(
+      currentMembership.id,
+    );
+    const totalAdjustments =
+      await this.adjustmentRepository.getTotalByMembershipId(
+        currentMembership.id,
+      );
+    const effectiveAmount = Math.max(
+      currentMembership.amount +
+        currentMembership.adjustmentAmount +
+        totalAdjustments,
+      0,
+    );
+    const previousMembershipFullyPaid =
+      input.previousMembershipFullyPaid ??
+      (totalPaid >= effectiveAmount &&
+        totalAdjustments >= currentMembership.adjustmentAmount);
+
     if (
       input.applyUnusedCredit &&
+      previousMembershipFullyPaid &&
       new Date(currentMembership.endDate) > today
     ) {
       const startDate = new Date(currentMembership.startDate);
@@ -88,6 +113,11 @@ export class ChangeMembershipPlanUseCase {
     const finalAmount = Math.max(newPlan.amount + adjustmentAmount, 0);
 
     const now = new Date().toISOString();
+    const startDate = input.startDate ? new Date(input.startDate) : today;
+
+    if (Number.isNaN(startDate.getTime())) {
+      throw new Error('Invalid membership start date');
+    }
 
     const updatedOldMembership: Membership = {
       ...currentMembership,
@@ -101,9 +131,9 @@ export class ChangeMembershipPlanUseCase {
       id: this.idGenerator.generate(),
       memberId: input.memberId,
       planId: newPlan.id,
-      startDate: today.toISOString(),
+      startDate: startDate.toISOString(),
       endDate: this.calculateEndDate(
-        today,
+        startDate,
         newPlan.durationMonths,
       ).toISOString(),
       amount: newPlan.amount,

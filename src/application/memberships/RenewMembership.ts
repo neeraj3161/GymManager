@@ -7,6 +7,7 @@ import { IdGenerator } from '../shared/IdGenerator';
 export interface RenewMembershipInput {
   memberId: string;
   planId: string;
+  startDate?: string;
 }
 
 export class RenewMembershipUseCase {
@@ -33,19 +34,12 @@ export class RenewMembershipUseCase {
       throw new Error('Membership plan not found');
     }
 
-    const existingMembership = await this.membershipRepository.getByMemberId(
-      input.memberId,
-    );
-
     const today = new Date();
 
-    let startDate = today;
+    const startDate = input.startDate ? new Date(input.startDate) : today;
 
-    // If the current membership is still active,
-    // start the renewal on the day after it expires.
-    if (existingMembership && new Date(existingMembership.endDate) >= today) {
-      startDate = new Date(existingMembership.endDate);
-      startDate.setDate(startDate.getDate() + 1);
+    if (Number.isNaN(startDate.getTime())) {
+      throw new Error('Invalid membership start date');
     }
 
     const endDate = new Date(startDate);

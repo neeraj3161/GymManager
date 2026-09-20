@@ -164,12 +164,6 @@ export function DashboardScreen() {
         />
 
         <StatCard
-          title="Update Test"
-          value={0}
-          onPress={() => navigation.navigate('UpdateTest')}
-        />
-
-        <StatCard
           title="Expiring Soon"
           value={dashboard.expiringSoon}
           onPress={() =>

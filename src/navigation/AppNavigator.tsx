@@ -36,7 +36,7 @@ import { SettingsScreen } from '../presentation/screens/settings/SettingsScreen'
 import { RenewMembershipScreen } from '../presentation/screens/memberships/RenewMembershipScreen';
 
 import { ChangeMembershipPlanScreen } from '../presentation/screens/memberships/ChangeMembershipPlanScreen';
-import UpdateTestScreen from '../presentation/screens/UpdateTestScreen';
+import { BackupScreen } from '../presentation/screens/settings/BackupScreen';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -55,7 +55,7 @@ export type RootStackParamList = {
   Birthdays: undefined;
   Staff: undefined;
   Settings: undefined;
-  UpdateTest: undefined;
+  Backup: undefined;
 
   RenewMembership: {
     memberId: string;
@@ -254,9 +254,11 @@ export function AppNavigator() {
             component={SettingsScreen}
             options={{ title: 'Settings' }}
           />
-
-          <Stack.Screen name="UpdateTest" component={UpdateTestScreen} />
-
+          <Stack.Screen
+            name="Backup"
+            component={BackupScreen}
+            options={{ title: 'Backup & Restore' }}
+          />
           <Stack.Screen
             name="RenewMembership"
             component={RenewMembershipScreen}

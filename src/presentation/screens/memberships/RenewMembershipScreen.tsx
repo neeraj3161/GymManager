@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Pressable,
@@ -20,6 +20,10 @@ import {
   PreviousDueSection,
   PreviousDueAction,
 } from '../../components/PreviousDueSection';
+import {
+  MembershipStartDateOption,
+  MembershipStartDateSection,
+} from '../../components/MembershipStartDateSection';
 
 export function RenewMembershipScreen() {
   const navigation = useNavigation<any>();
@@ -33,6 +37,8 @@ export function RenewMembershipScreen() {
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
 
   const [currentMembership, setCurrentMembership] = useState<any>(null);
+  const [startDateOption, setStartDateOption] =
+    useState<MembershipStartDateOption>('today');
 
   const [saving, setSaving] = useState(false);
 
@@ -47,11 +53,7 @@ export function RenewMembershipScreen() {
 
   const [writeOffReason, setWriteOffReason] = useState('');
 
-  useEffect(() => {
-    load();
-  }, []);
-
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const plansData = await container.useCases.getPlans.execute();
 
@@ -71,6 +73,9 @@ export function RenewMembershipScreen() {
       }
 
       setCurrentMembership(membership);
+      setStartDateOption(
+        isExpired(membership.endDate) ? 'previous_end' : 'today',
+      );
 
       const due = await container.useCases.getMembershipDue.execute(
         membership.id,
@@ -89,7 +94,11 @@ export function RenewMembershipScreen() {
           : 'Unable to load renewal information.',
       );
     }
-  };
+  }, [memberId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const selectedPlan = plans.find(plan => plan.id === selectedPlanId);
 
@@ -165,6 +174,10 @@ export function RenewMembershipScreen() {
         previousDueAction: previousDue > 0 ? previousDueAction : 'none',
 
         previousMembershipId: currentMembership.id,
+        startDate:
+          startDateOption === 'previous_end'
+            ? currentMembership.endDate
+            : new Date().toISOString(),
 
         collectAmount:
           previousDueAction === 'collect' ? Number(collectAmount) : undefined,
@@ -246,6 +259,14 @@ export function RenewMembershipScreen() {
           onWriteOffReasonChange={setWriteOffReason}
         />
 
+        {currentMembership && (
+          <MembershipStartDateSection
+            previousEndDate={currentMembership.endDate}
+            selected={startDateOption}
+            onChange={setStartDateOption}
+          />
+        )}
+
         {selectedPlan && (
           <View style={styles.summary}>
             <Text style={styles.summaryTitle}>Renewal Summary</Text>
@@ -311,6 +332,14 @@ export function RenewMembershipScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+function isExpired(endDate: string): boolean {
+  const end = new Date(endDate);
+  const today = new Date();
+  end.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+  return end < today;
 }
 
 const styles = StyleSheet.create({

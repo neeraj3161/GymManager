@@ -87,7 +87,8 @@ export class GetMembersWithFeesDueUseCase {
           WHERE ms2.member_id = m.id
             AND date(ms2.start_date) <= date('now')
           ORDER BY
-            date(ms2.end_date) DESC,
+            CASE WHEN ms2.status = 'active' THEN 0 ELSE 1 END,
+            date(ms2.start_date) DESC,
             datetime(ms2.created_at) DESC
           LIMIT 1
         )

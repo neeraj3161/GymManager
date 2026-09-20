@@ -1,0 +1,13 @@
+{
+  "name": "gymmanager-update-server",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Static APK update server for GymManager",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

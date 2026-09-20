@@ -5,5 +5,7 @@ export interface MembershipAdjustmentRepository {
 
   getByMembershipId(membershipId: string): Promise<MembershipAdjustment[]>;
 
+  getByMemberId(memberId: string): Promise<MembershipAdjustment[]>;
+
   getTotalByMembershipId(membershipId: string): Promise<number>;
 }

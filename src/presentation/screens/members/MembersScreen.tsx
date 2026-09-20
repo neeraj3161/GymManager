@@ -114,7 +114,6 @@ export function MembersScreen() {
         const expiryLimit = new Date(today);
         expiryLimit.setDate(expiryLimit.getDate() + 7);
 
-        const todayKey = toLocalDateKey(today);
         const expiryLimitKey = toLocalDateKey(expiryLimit);
 
         const expiringMembers: MemberWithMembership[] = [];
@@ -125,13 +124,12 @@ export function MembersScreen() {
           const membership =
             await container.repositories.membership.getByMemberId(member.id);
 
-          if (!membership || membership.status !== 'active') continue;
+          if (!membership) continue;
 
           const endDate = String(membership.endDate ?? '').slice(0, 10);
 
           if (
             /^\d{4}-\d{2}-\d{2}$/.test(endDate) &&
-            endDate >= todayKey &&
             endDate <= expiryLimitKey
           ) {
             expiringMembers.push({
@@ -493,12 +491,17 @@ export function MembersScreen() {
           <MemberCard
             member={item}
             showFeeDue={filter === 'feesDue'}
+            allowLongPress={filter === 'feesDue' || filter === 'expiringSoon'}
             onPress={() =>
               navigation.navigate('MemberDetails', {
                 memberId: item.id,
               })
             }
-            onLongPress={() => setRemindMember(item)}
+            onLongPress={
+              filter === 'feesDue' || filter === 'expiringSoon'
+                ? () => setRemindMember(item)
+                : undefined
+            }
           />
         )}
         ListEmptyComponent={
@@ -535,13 +538,15 @@ function FilterButton({ label, selected, onPress }: FilterButtonProps) {
 interface MemberCardProps {
   member: MemberWithMembership;
   showFeeDue: boolean;
+  allowLongPress: boolean;
   onPress: () => void;
-  onLongPress: () => void;
+  onLongPress?: () => void;
 }
 
 function MemberCard({
   member,
   showFeeDue,
+  allowLongPress,
   onPress,
   onLongPress,
 }: MemberCardProps) {
@@ -554,7 +559,7 @@ function MemberCard({
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
       onPress={onPress}
       onLongPress={onLongPress}
-      delayLongPress={450}
+      delayLongPress={allowLongPress ? 450 : undefined}
     >
       <View style={styles.avatar}>
         <Text style={styles.avatarText}>{initials}</Text>
@@ -640,6 +645,7 @@ function buildMembershipReminder(
   member: MemberWithMembership,
   gymName: string,
   gymPhone: string,
+  remainingAmount: number,
 ): string {
   const name = member.firstName?.trim() || 'Member';
   const days = getMembershipDaysRemaining(member.membershipEndDate);
@@ -659,9 +665,20 @@ function buildMembershipReminder(
     ? `\nFor assistance or payment confirmation, contact ${gym} at ${gymPhone.trim()}.`
     : '';
 
-  return `Hi ${name}, this is a reminder from ${gym}. Your membership ${status}${
-    expiryDate ? ` (expiry date: ${expiryDate})` : ''
-  }. Please renew your plan and pay the outstanding amount as soon as possible. Thank you.${contact}`;
+  const expiry = expiryDate ? ` (expiry date: ${expiryDate})` : '';
+
+  if (days !== null && days < 0 && remainingAmount <= 0) {
+    return `Hi ${name}, this is a reminder from ${gym}. Your membership ${status}${expiry}. Please renew your membership to continue. Thank you.${contact}`;
+  }
+
+  const dueMessage =
+    remainingAmount > 0
+      ? ` and pay the outstanding amount of ₹${remainingAmount.toLocaleString(
+          'en-IN',
+        )}`
+      : '';
+
+  return `Hi ${name}, this is a reminder from ${gym}. Your membership ${status}${expiry}. Please renew your plan${dueMessage} as soon as possible. Thank you.${contact}`;
 }
 
 async function sendMembershipReminder(
@@ -679,15 +696,25 @@ async function sendMembershipReminder(
 
   let gymName = '';
   let gymPhone = '';
+  let remainingAmount = 0;
   try {
-    const gym = await container.useCases.getGymProfile.execute();
+    const [gym, feeStatus] = await Promise.all([
+      container.useCases.getGymProfile.execute(),
+      container.useCases.getMemberFeeStatus.execute(member.id),
+    ]);
     gymName = gym?.name ?? '';
     gymPhone = gym?.phone ?? '';
+    remainingAmount = feeStatus?.remainingAmount ?? 0;
   } catch (error) {
     console.warn('Could not load gym profile for reminder:', error);
   }
 
-  const message = buildMembershipReminder(member, gymName, gymPhone);
+  const message = buildMembershipReminder(
+    member,
+    gymName,
+    gymPhone,
+    remainingAmount,
+  );
   const phone = member.phone.replace(/[^\d]/g, '');
   const whatsappPhone = phone.length === 10 ? `91${phone}` : phone;
   const url =

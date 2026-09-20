@@ -20,6 +20,7 @@ import { Payment, PaymentMethod } from '../../../domain/entities/Payment';
 import { Membership } from '../../../domain/entities/Membership';
 import { MembershipPlan } from '../../../domain/entities/MembershipPlan';
 import { MemberFeeStatus } from '../../../application/payments/GetMemberFeeStatus';
+import { MembershipAdjustment } from '../../../domain/entities/MembershipAdjustment';
 
 export default function PaymentsScreen() {
   const route = useRoute<any>();
@@ -30,6 +31,7 @@ export default function PaymentsScreen() {
   const currentUser = useAuthStore(state => state.user);
 
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [adjustments, setAdjustments] = useState<MembershipAdjustment[]>([]);
   const [membership, setMembership] = useState<Membership | null>(null);
   const [plan, setPlan] = useState<MembershipPlan | null>(null);
   const [feeStatus, setFeeStatus] = useState<MemberFeeStatus | null>(null);
@@ -53,15 +55,18 @@ export default function PaymentsScreen() {
 
   const loadPayments = useCallback(async () => {
     try {
-      const [paymentData, membershipData, feeStatusData] = await Promise.all([
-        container.useCases.getPaymentHistory.execute(memberId),
-        container.repositories.membership.getByMemberId(memberId),
-        container.useCases.getMemberFeeStatus.execute(memberId),
-      ]);
+      const [paymentData, membershipData, feeStatusData, adjustmentData] =
+        await Promise.all([
+          container.useCases.getPaymentHistory.execute(memberId),
+          container.repositories.membership.getByMemberId(memberId),
+          container.useCases.getMemberFeeStatus.execute(memberId),
+          container.repositories.membershipAdjustment.getByMemberId(memberId),
+        ]);
 
       setPayments(paymentData);
       setMembership(membershipData);
       setFeeStatus(feeStatusData);
+      setAdjustments(adjustmentData);
 
       if (membershipData) {
         const planData = await container.repositories.plan.getById(
@@ -291,6 +296,43 @@ export default function PaymentsScreen() {
               </View>
             ) : null}
 
+            {adjustments.filter(
+              adjustment => adjustment.type !== 'carry_forward_out',
+            ).length > 0 ? (
+              <View style={styles.adjustmentsSection}>
+                <Text style={styles.sectionTitle}>Balance History</Text>
+                <Text style={styles.adjustmentsHint}>
+                  Changes applied to membership balances. Payments are shown
+                  below.
+                </Text>
+                {adjustments
+                  .filter(adjustment => adjustment.type !== 'carry_forward_out')
+                  .map(adjustment => (
+                    <View key={adjustment.id} style={styles.adjustmentRow}>
+                      <View>
+                        <Text style={styles.adjustmentTitle}>
+                          {formatAdjustmentTitle(adjustment.type)}
+                        </Text>
+                        <Text style={styles.adjustmentDate}>
+                          {formatDate(adjustment.createdAt)}
+                        </Text>
+                      </View>
+                      <Text
+                        style={[
+                          styles.adjustmentAmount,
+                          adjustment.amount < 0
+                            ? styles.negativeAmount
+                            : styles.positiveAmount,
+                        ]}
+                      >
+                        {adjustment.amount < 0 ? '-' : '+'}
+                        {formatCurrency(Math.abs(adjustment.amount))}
+                      </Text>
+                    </View>
+                  ))}
+              </View>
+            ) : null}
+
             <Text style={styles.sectionTitle}>Record Payment</Text>
 
             {remainingAmount > 0 ? (
@@ -373,6 +415,19 @@ export default function PaymentsScreen() {
       />
     </SafeAreaView>
   );
+}
+
+function formatAdjustmentTitle(type: MembershipAdjustment['type']): string {
+  switch (type) {
+    case 'carry_forward_in':
+      return 'Previous due added to this plan';
+    case 'write_off':
+      return 'Previous due written off';
+    case 'discount':
+      return 'Discount applied';
+    default:
+      return 'Balance adjustment';
+  }
 }
 
 function getStatusStyle(status: MemberFeeStatus['status']) {
@@ -565,6 +620,13 @@ const styles = StyleSheet.create({
     color: '#111827',
   },
 
+  adjustmentsHint: {
+    marginTop: -5,
+    marginBottom: 8,
+    color: '#6B7280',
+    fontSize: 12,
+  },
+
   input: {
     backgroundColor: '#FFFFFF',
     borderRadius: 11,
@@ -680,6 +742,47 @@ const styles = StyleSheet.create({
   paymentRight: {
     alignItems: 'flex-end',
     maxWidth: '50%',
+  },
+
+  adjustmentsSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+  },
+
+  adjustmentRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 9,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+
+  adjustmentTitle: {
+    fontWeight: '700',
+    color: '#111827',
+    textTransform: 'capitalize',
+  },
+
+  adjustmentDate: {
+    marginTop: 3,
+    fontSize: 12,
+    color: '#6B7280',
+  },
+
+  adjustmentAmount: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+
+  negativeAmount: {
+    color: '#B91C1C',
+  },
+
+  positiveAmount: {
+    color: '#15803D',
   },
 
   paymentMethod: {
