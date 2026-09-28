@@ -1,5 +1,7 @@
 export const APP_NAME = 'Gym Manager';
 
+export const APP_VERSION = '0.0.1';
+
 export const DEFAULT_CURRENCY = 'INR';
 
 export const DEFAULT_PLANS = [

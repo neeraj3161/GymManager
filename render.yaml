@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: gymmanager-update-server
+    runtime: node
+    rootDir: update-server
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true

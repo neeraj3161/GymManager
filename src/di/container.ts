@@ -218,6 +218,7 @@ const createOwnerUseCase = new CreateOwnerUseCase(
   userRepository,
   passwordHasher,
   idGenerator,
+  gymRepository,
 );
 
 // --------------------------------------------------

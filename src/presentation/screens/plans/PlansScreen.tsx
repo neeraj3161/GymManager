@@ -2,7 +2,9 @@ import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -18,7 +20,6 @@ import { container } from '../../../di/container';
 
 export function PlansScreen() {
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
-
   const [modalVisible, setModalVisible] = useState(false);
   const [editingPlan, setEditingPlan] = useState<MembershipPlan | null>(null);
 
@@ -32,12 +33,13 @@ export function PlansScreen() {
 
   const load = useCallback(async () => {
     try {
+      setLoading(true);
       const data = await container.useCases.getPlans.execute();
       setPlans(data);
     } catch (error) {
       Alert.alert(
-        'Error',
-        error instanceof Error ? error.message : 'Unable to load plans.',
+        'Unable to load plans',
+        error instanceof Error ? error.message : 'Please try again.',
       );
     } finally {
       setLoading(false);
@@ -50,12 +52,16 @@ export function PlansScreen() {
     }, [load]),
   );
 
-  const openAddModal = () => {
+  const resetForm = () => {
     setEditingPlan(null);
     setName('');
     setDuration('');
     setAmount('');
     setDescription('');
+  };
+
+  const openAddModal = () => {
+    resetForm();
     setModalVisible(true);
   };
 
@@ -74,7 +80,7 @@ export function PlansScreen() {
     }
 
     setModalVisible(false);
-    setEditingPlan(null);
+    resetForm();
   };
 
   const savePlan = async () => {
@@ -82,14 +88,17 @@ export function PlansScreen() {
     const planAmount = Number(amount);
 
     if (!name.trim()) {
-      Alert.alert('Invalid plan', 'Plan name is required.');
+      Alert.alert(
+        'Plan name required',
+        'Enter a name for this membership plan.',
+      );
       return;
     }
 
     if (!Number.isInteger(durationMonths) || durationMonths <= 0) {
       Alert.alert(
         'Invalid duration',
-        'Duration must be a positive number of months.',
+        'Duration must be a positive whole number of months.',
       );
       return;
     }
@@ -105,31 +114,30 @@ export function PlansScreen() {
       if (editingPlan) {
         await container.useCases.updatePlan.execute({
           id: editingPlan.id,
-          name,
+          name: name.trim(),
           durationMonths,
           amount: planAmount,
-          description,
+          description: description.trim(),
         });
 
-        Alert.alert('Success', 'Membership plan updated.');
+        Alert.alert('Plan updated', `${name.trim()} is ready to use.`);
       } else {
         await container.useCases.createPlan.execute({
-          name,
+          name: name.trim(),
           durationMonths,
           amount: planAmount,
-          description,
+          description: description.trim(),
         });
 
-        Alert.alert('Success', 'Membership plan created.');
+        Alert.alert('Plan created', `${name.trim()} is now available.`);
       }
 
       setModalVisible(false);
-      setEditingPlan(null);
-
+      resetForm();
       await load();
     } catch (error) {
       Alert.alert(
-        'Unable to save',
+        'Unable to save plan',
         error instanceof Error ? error.message : 'Something went wrong.',
       );
     } finally {
@@ -156,7 +164,6 @@ export function PlansScreen() {
           onPress: async () => {
             try {
               await container.useCases.togglePlanStatus.execute(plan.id);
-
               await load();
             } catch (error) {
               Alert.alert(
@@ -176,89 +183,166 @@ export function PlansScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.center}>
-          <ActivityIndicator size="large" />
-          <Text style={styles.loadingText}>Loading membership plans...</Text>
+          <ActivityIndicator size="small" />
+          <Text style={styles.loadingText}>Loading plans...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  const activeCount = plans.filter(plan => plan.active).length;
+
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.headingRow}>
-          <View style={styles.heading}>
-            <Text style={styles.title}>Membership Plans</Text>
-
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.content}
+      >
+        <View style={styles.header}>
+          <View style={styles.headerCopy}>
+            <Text style={styles.eyebrow}>MEMBERSHIPS</Text>
+            <Text style={styles.title}>Plans</Text>
             <Text style={styles.subtitle}>
-              Create and manage your gym plans.
+              Manage the membership plans available to your gym.
             </Text>
           </View>
 
-          <Pressable style={styles.add} onPress={openAddModal}>
-            <Text style={styles.addText}>+ Add</Text>
+          <Pressable
+            onPress={openAddModal}
+            style={({ pressed }) => [
+              styles.addButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.addPlus}>+</Text>
+            <Text style={styles.addText}>Add</Text>
           </Pressable>
         </View>
 
-        {plans.length === 0 ? (
-          <View style={styles.empty}>
-            <Text style={styles.emptyTitle}>No membership plans</Text>
+        <View style={styles.overviewRow}>
+          <View>
+            <Text style={styles.overviewLabel}>AVAILABLE PLANS</Text>
+            <Text style={styles.overviewValue}>{activeCount}</Text>
+          </View>
 
+          <View style={styles.overviewRight}>
+            <Text style={styles.overviewLabel}>TOTAL PLANS</Text>
+            <Text style={styles.overviewSecondary}>{plans.length}</Text>
+          </View>
+        </View>
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Membership plans</Text>
+          <Text style={styles.sectionHint}>
+            {plans.length} {plans.length === 1 ? 'plan' : 'plans'}
+          </Text>
+        </View>
+
+        {plans.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyIcon}>+</Text>
+            <Text style={styles.emptyTitle}>No plans yet</Text>
             <Text style={styles.emptyText}>
-              Create your first membership plan.
+              Create your first membership plan to start adding memberships.
             </Text>
+
+            <Pressable
+              onPress={openAddModal}
+              style={({ pressed }) => [
+                styles.emptyButton,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.emptyButtonText}>Add first plan</Text>
+            </Pressable>
           </View>
         ) : (
-          plans.map(plan => (
-            <View
-              style={[styles.card, !plan.active && styles.inactiveCard]}
-              key={plan.id}
-            >
-              <View style={styles.cardMain}>
-                <View style={styles.nameRow}>
-                  <Text style={styles.name}>{plan.name}</Text>
+          <View style={styles.planList}>
+            {plans.map(plan => (
+              <View
+                key={plan.id}
+                style={[
+                  styles.planCard,
+                  !plan.active && styles.planCardInactive,
+                ]}
+              >
+                <View style={styles.planTop}>
+                  <View style={styles.planInfo}>
+                    <View style={styles.planNameRow}>
+                      <Text
+                        style={[
+                          styles.planName,
+                          !plan.active && styles.planNameInactive,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {plan.name}
+                      </Text>
 
-                  <View
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          plan.active
+                            ? styles.statusBadgeActive
+                            : styles.statusBadgeInactive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusText,
+                            plan.active
+                              ? styles.statusTextActive
+                              : styles.statusTextInactive,
+                          ]}
+                        >
+                          {plan.active ? 'Active' : 'Inactive'}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.planDuration}>
+                      {plan.durationMonths} month
+                      {plan.durationMonths > 1 ? 's' : ''}
+                    </Text>
+                  </View>
+
+                  <Text
                     style={[
-                      styles.statusBadge,
-                      plan.active ? styles.activeBadge : styles.inactiveBadge,
+                      styles.planAmount,
+                      !plan.active && styles.planAmountInactive,
+                    ]}
+                  >
+                    ₹{plan.amount.toLocaleString('en-IN')}
+                  </Text>
+                </View>
+
+                {plan.description ? (
+                  <Text style={styles.description} numberOfLines={2}>
+                    {plan.description}
+                  </Text>
+                ) : null}
+
+                <View style={styles.planFooter}>
+                  <Pressable
+                    onPress={() => openEditModal(plan)}
+                    style={({ pressed }) => [
+                      styles.textButton,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <Text style={styles.editText}>Edit</Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => togglePlan(plan)}
+                    style={({ pressed }) => [
+                      styles.textButton,
+                      pressed && styles.pressed,
                     ]}
                   >
                     <Text
                       style={[
-                        styles.statusText,
-                        plan.active ? styles.activeText : styles.inactiveText,
-                      ]}
-                    >
-                      {plan.active ? 'Active' : 'Inactive'}
-                    </Text>
-                  </View>
-                </View>
-
-                <Text style={styles.duration}>
-                  {plan.durationMonths} month
-                  {plan.durationMonths > 1 ? 's' : ''}
-                </Text>
-
-                {plan.description ? (
-                  <Text style={styles.description}>{plan.description}</Text>
-                ) : null}
-              </View>
-
-              <View style={styles.right}>
-                <Text style={styles.amount}>
-                  ₹{plan.amount.toLocaleString('en-IN')}
-                </Text>
-
-                <View style={styles.actions}>
-                  <Pressable onPress={() => openEditModal(plan)}>
-                    <Text style={styles.edit}>Edit</Text>
-                  </Pressable>
-
-                  <Pressable onPress={() => togglePlan(plan)}>
-                    <Text
-                      style={[
-                        styles.toggle,
+                        styles.toggleText,
                         plan.active ? styles.disableText : styles.enableText,
                       ]}
                     >
@@ -267,8 +351,8 @@ export function PlansScreen() {
                   </Pressable>
                 </View>
               </View>
-            </View>
-          ))
+            ))}
+          </View>
         )}
       </ScrollView>
 
@@ -278,238 +362,438 @@ export function PlansScreen() {
         animationType="slide"
         onRequestClose={closeModal}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modal}>
-            <Text style={styles.modalTitle}>
-              {editingPlan ? 'Edit Plan' : 'Add Plan'}
-            </Text>
-
-            <Text style={styles.label}>Plan name</Text>
-
-            <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-              placeholder="e.g. Monthly"
-              placeholderTextColor="#9CA3AF"
-              autoCapitalize="words"
-              editable={!saving}
+        <KeyboardAvoidingView
+          style={styles.modalRoot}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
+          <View style={styles.modalOverlay}>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={closeModal}
+              disabled={saving}
             />
 
-            <Text style={styles.label}>Duration (months)</Text>
+            <View style={styles.sheet}>
+              <View style={styles.sheetHandle} />
 
-            <TextInput
-              style={styles.input}
-              value={duration}
-              onChangeText={setDuration}
-              placeholder="e.g. 1"
-              placeholderTextColor="#9CA3AF"
-              keyboardType="number-pad"
-              editable={!saving}
-            />
+              <View style={styles.sheetHeader}>
+                <View style={styles.sheetHeaderCopy}>
+                  <Text style={styles.sheetEyebrow}>
+                    {editingPlan ? 'EDIT PLAN' : 'NEW PLAN'}
+                  </Text>
+                  <Text style={styles.sheetTitle}>
+                    {editingPlan ? 'Edit plan' : 'Add plan'}
+                  </Text>
+                </View>
 
-            <Text style={styles.label}>Amount</Text>
+                <Pressable
+                  onPress={closeModal}
+                  disabled={saving}
+                  hitSlop={10}
+                  style={({ pressed }) => [
+                    styles.closeButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <Text style={styles.closeText}>×</Text>
+                </Pressable>
+              </View>
 
-            <TextInput
-              style={styles.input}
-              value={amount}
-              onChangeText={setAmount}
-              placeholder="e.g. 1200"
-              placeholderTextColor="#9CA3AF"
-              keyboardType="decimal-pad"
-              editable={!saving}
-            />
-
-            <Text style={styles.label}>Description</Text>
-
-            <TextInput
-              style={[styles.input, styles.descriptionInput]}
-              value={description}
-              onChangeText={setDescription}
-              placeholder="Optional"
-              placeholderTextColor="#9CA3AF"
-              multiline
-              editable={!saving}
-            />
-
-            <View style={styles.modalActions}>
-              <Pressable
-                style={styles.cancelButton}
-                onPress={closeModal}
-                disabled={saving}
+              <ScrollView
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.sheetContent}
               >
-                <Text style={styles.cancelText}>Cancel</Text>
-              </Pressable>
+                <Field
+                  label="Plan name"
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="e.g. Monthly"
+                  editable={!saving}
+                  autoCapitalize="words"
+                />
 
-              <Pressable
-                style={[styles.saveButton, saving && styles.disabledButton]}
-                onPress={savePlan}
-                disabled={saving}
-              >
-                {saving ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.saveText}>Save</Text>
-                )}
-              </Pressable>
+                <View style={styles.fieldRow}>
+                  <View style={styles.fieldHalf}>
+                    <Field
+                      label="Duration"
+                      value={duration}
+                      onChangeText={setDuration}
+                      placeholder="1"
+                      keyboardType="number-pad"
+                      editable={!saving}
+                      suffix="months"
+                    />
+                  </View>
+
+                  <View style={styles.fieldHalf}>
+                    <Field
+                      label="Amount"
+                      value={amount}
+                      onChangeText={setAmount}
+                      placeholder="1200"
+                      keyboardType="decimal-pad"
+                      editable={!saving}
+                      prefix="₹"
+                    />
+                  </View>
+                </View>
+
+                <Field
+                  label="Description"
+                  value={description}
+                  onChangeText={setDescription}
+                  placeholder="Optional"
+                  editable={!saving}
+                  multiline
+                  textAlignVertical="top"
+                  inputStyle={styles.descriptionInput}
+                />
+              </ScrollView>
+
+              <View style={styles.sheetFooter}>
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.cancelButton,
+                    pressed && styles.pressed,
+                  ]}
+                  onPress={closeModal}
+                  disabled={saving}
+                >
+                  <Text style={styles.cancelText}>Cancel</Text>
+                </Pressable>
+
+                <Pressable
+                  style={({ pressed }) => [
+                    styles.saveButton,
+                    saving && styles.saveButtonDisabled,
+                    pressed && !saving && styles.saveButtonPressed,
+                  ]}
+                  onPress={savePlan}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.saveText}>
+                      {editingPlan ? 'Save changes' : 'Create plan'}
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
+  );
+}
+
+function Field({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  editable = true,
+  keyboardType = 'default',
+  autoCapitalize = 'sentences',
+  multiline = false,
+  textAlignVertical,
+  prefix,
+  suffix,
+  inputStyle,
+}: {
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder: string;
+  editable?: boolean;
+  keyboardType?: 'default' | 'number-pad' | 'decimal-pad';
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  multiline?: boolean;
+  textAlignVertical?: 'auto' | 'top' | 'bottom' | 'center';
+  prefix?: string;
+  suffix?: string;
+  inputStyle?: object;
+}) {
+  return (
+    <View style={styles.field}>
+      <Text style={styles.fieldLabel}>{label}</Text>
+
+      <View style={[styles.inputShell, !editable && styles.inputDisabled]}>
+        {prefix ? <Text style={styles.inputAffix}>{prefix}</Text> : null}
+
+        <TextInput
+          style={[styles.input, inputStyle]}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor="#A0A8B5"
+          editable={editable}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          multiline={multiline}
+          textAlignVertical={textAlignVertical}
+        />
+
+        {suffix ? <Text style={styles.inputSuffix}>{suffix}</Text> : null}
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#F6F7F9',
+    backgroundColor: '#F5F6F8',
   },
 
-  container: {
-    padding: 16,
-    paddingBottom: 40,
+  content: {
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 34,
   },
 
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  loadingText: {
-    marginTop: 12,
-    color: '#6B7280',
-  },
-
-  headingRow: {
+  header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 18,
+    alignItems: 'flex-start',
+    marginBottom: 20,
   },
 
-  heading: {
+  headerCopy: {
     flex: 1,
-    marginRight: 12,
+    paddingRight: 10,
+  },
+
+  eyebrow: {
+    fontSize: 10,
+    letterSpacing: 1.5,
+    fontWeight: '900',
+    color: '#7C3AED',
   },
 
   title: {
-    fontSize: 23,
-    fontWeight: '800',
+    marginTop: 2,
+    fontSize: 30,
+    lineHeight: 34,
+    fontWeight: '900',
     color: '#111827',
+    letterSpacing: -0.8,
   },
 
   subtitle: {
-    marginTop: 4,
-    color: '#6B7280',
+    marginTop: 6,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#7C8796',
   },
 
-  add: {
-    backgroundColor: '#111827',
-    borderRadius: 11,
+  addButton: {
+    height: 44,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderRadius: 15,
+    backgroundColor: '#111827',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+
+  addPlus: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    lineHeight: 20,
+    fontWeight: '300',
+    marginRight: 6,
   },
 
   addText: {
     color: '#FFFFFF',
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '900',
   },
 
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 17,
-    marginBottom: 10,
+  overviewRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: '#151A24',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    marginBottom: 25,
   },
 
-  inactiveCard: {
-    opacity: 0.75,
+  overviewLabel: {
+    fontSize: 8,
+    letterSpacing: 1,
+    color: '#8F98A7',
+    fontWeight: '900',
   },
 
-  cardMain: {
-    flex: 1,
-    marginRight: 12,
-  },
-
-  nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-
-  name: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#111827',
-  },
-
-  duration: {
+  overviewValue: {
     marginTop: 4,
-    color: '#6B7280',
+    fontSize: 24,
+    lineHeight: 28,
+    color: '#FFFFFF',
+    fontWeight: '900',
   },
 
-  description: {
-    marginTop: 6,
-    color: '#6B7280',
-    fontSize: 13,
-  },
-
-  statusBadge: {
-    borderRadius: 8,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-  },
-
-  activeBadge: {
-    backgroundColor: '#DCFCE7',
-  },
-
-  inactiveBadge: {
-    backgroundColor: '#F3F4F6',
-  },
-
-  statusText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-
-  activeText: {
-    color: '#166534',
-  },
-
-  inactiveText: {
-    color: '#6B7280',
-  },
-
-  right: {
+  overviewRight: {
     alignItems: 'flex-end',
   },
 
-  amount: {
+  overviewSecondary: {
+    marginTop: 4,
     fontSize: 18,
-    fontWeight: '800',
-    color: '#111827',
+    lineHeight: 22,
+    color: '#D8DDE5',
+    fontWeight: '900',
   },
 
-  actions: {
+  sectionHeader: {
     flexDirection: 'row',
-    gap: 14,
-    marginTop: 7,
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    marginBottom: 11,
   },
 
-  edit: {
-    fontWeight: '700',
-    color: '#2563EB',
+  sectionTitle: {
+    fontSize: 18,
+    lineHeight: 22,
+    color: '#111827',
+    fontWeight: '900',
   },
 
-  toggle: {
+  sectionHint: {
+    fontSize: 9,
+    color: '#98A2B3',
+    fontWeight: '800',
+  },
+
+  planList: {
+    gap: 10,
+  },
+
+  planCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7EBF0',
+    borderRadius: 19,
+    padding: 15,
+  },
+
+  planCardInactive: {
+    backgroundColor: '#FBFBFC',
+  },
+
+  planTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+
+  planInfo: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: 10,
+  },
+
+  planNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
+  },
+
+  planName: {
+    flexShrink: 1,
+    fontSize: 16,
+    lineHeight: 20,
+    color: '#182230',
+    fontWeight: '900',
+  },
+
+  planNameInactive: {
+    color: '#667085',
+  },
+
+  statusBadge: {
+    marginLeft: 8,
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+  },
+
+  statusBadgeActive: {
+    backgroundColor: '#EAF8F0',
+  },
+
+  statusBadgeInactive: {
+    backgroundColor: '#EFF1F4',
+  },
+
+  statusText: {
+    fontSize: 8,
+    fontWeight: '900',
+  },
+
+  statusTextActive: {
+    color: '#15803D',
+  },
+
+  statusTextInactive: {
+    color: '#687282',
+  },
+
+  planDuration: {
+    marginTop: 5,
+    fontSize: 11,
+    color: '#808B9A',
     fontWeight: '700',
+  },
+
+  planAmount: {
+    fontSize: 18,
+    lineHeight: 22,
+    color: '#111827',
+    fontWeight: '900',
+  },
+
+  planAmountInactive: {
+    color: '#7D8794',
+  },
+
+  description: {
+    marginTop: 13,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#EEF1F4',
+    fontSize: 11,
+    lineHeight: 16,
+    color: '#8A94A3',
+  },
+
+  planFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 18,
+    marginTop: 12,
+  },
+
+  textButton: {
+    paddingVertical: 4,
+  },
+
+  editText: {
+    fontSize: 11,
+    color: '#6D28D9',
+    fontWeight: '900',
+  },
+
+  toggleText: {
+    fontSize: 11,
+    fontWeight: '900',
   },
 
   disableText: {
@@ -520,105 +804,279 @@ const styles = StyleSheet.create({
     color: '#16A34A',
   },
 
-  empty: {
+  emptyCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 30,
+    borderWidth: 1,
+    borderColor: '#E7EBF0',
+    borderRadius: 21,
+    padding: 26,
     alignItems: 'center',
   },
 
+  emptyIcon: {
+    fontSize: 30,
+    color: '#7C3AED',
+    fontWeight: '300',
+  },
+
   emptyTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#111827',
+    marginTop: 12,
+    fontSize: 18,
+    color: '#101828',
+    fontWeight: '900',
   },
 
   emptyText: {
     marginTop: 6,
-    color: '#6B7280',
+    maxWidth: 285,
+    textAlign: 'center',
+    fontSize: 11,
+    lineHeight: 17,
+    color: '#7C8796',
   },
 
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
-  },
-
-  modal: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: 30,
-  },
-
-  modalTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#111827',
-    marginBottom: 18,
-  },
-
-  label: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#374151',
-    marginBottom: 6,
-  },
-
-  input: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    fontSize: 16,
-    color: '#111827',
-    marginBottom: 14,
-    backgroundColor: '#FFFFFF',
-  },
-
-  descriptionInput: {
-    minHeight: 70,
-    textAlignVertical: 'top',
-  },
-
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-    marginTop: 4,
-  },
-
-  cancelButton: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 10,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
-  },
-
-  cancelText: {
-    color: '#374151',
-    fontWeight: '700',
-  },
-
-  saveButton: {
-    minWidth: 75,
+  emptyButton: {
+    marginTop: 16,
+    height: 44,
+    paddingHorizontal: 16,
+    borderRadius: 14,
     backgroundColor: '#111827',
-    borderRadius: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 11,
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  saveText: {
+  emptyButtonText: {
+    fontSize: 12,
+    fontWeight: '900',
     color: '#FFFFFF',
+  },
+
+  modalRoot: {
+    flex: 1,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(12,16,23,0.48)',
+    justifyContent: 'flex-end',
+  },
+
+  sheet: {
+    maxHeight: '84%',
+    backgroundColor: '#F7F8FA',
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    overflow: 'hidden',
+  },
+
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#D0D5DC',
+    marginTop: 9,
+    marginBottom: 7,
+  },
+
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingTop: 5,
+    paddingBottom: 10,
+  },
+
+  sheetHeaderCopy: {
+    flex: 1,
+    paddingRight: 12,
+  },
+
+  sheetEyebrow: {
+    fontSize: 9,
+    letterSpacing: 1.3,
+    color: '#7C3AED',
+    fontWeight: '900',
+  },
+
+  sheetTitle: {
+    marginTop: 3,
+    fontSize: 22,
+    lineHeight: 27,
+    color: '#101828',
+    fontWeight: '900',
+  },
+
+  closeButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E7EC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  closeText: {
+    marginTop: -2,
+    fontSize: 24,
+    lineHeight: 25,
+    color: '#5D6775',
+    fontWeight: '300',
+  },
+
+  sheetContent: {
+    paddingHorizontal: 20,
+    paddingTop: 6,
+    paddingBottom: 16,
+  },
+
+  field: {
+    marginBottom: 15,
+  },
+
+  fieldRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+
+  fieldHalf: {
+    flex: 1,
+  },
+
+  fieldLabel: {
+    marginBottom: 7,
+    fontSize: 11,
+    color: '#697586',
+    fontWeight: '900',
+  },
+
+  inputShell: {
+    minHeight: 49,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E0E5EB',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+  },
+
+  inputDisabled: {
+    opacity: 0.55,
+  },
+
+  inputAffix: {
+    marginRight: 3,
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#667085',
+  },
+
+  inputSuffix: {
+    marginLeft: 5,
+    fontSize: 10,
+    color: '#98A2B3',
+    fontWeight: '800',
+  },
+
+  input: {
+    flex: 1,
+    minHeight: 47,
+    paddingHorizontal: 0,
+    paddingVertical: 0,
+    fontSize: 13,
+    color: '#17212F',
     fontWeight: '700',
   },
 
-  disabledButton: {
-    opacity: 0.5,
+  descriptionInput: {
+    minHeight: 92,
+    paddingTop: 12,
+    paddingBottom: 12,
+  },
+
+  sheetFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 16 : 11,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E5E9EE',
+    shadowColor: '#101828',
+    shadowOpacity: 0.07,
+    shadowRadius: 13,
+    shadowOffset: { width: 0, height: -5 },
+    elevation: 11,
+  },
+
+  cancelButton: {
+    height: 50,
+    minWidth: 84,
+    paddingHorizontal: 14,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#E0E5EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+
+  cancelText: {
+    fontSize: 12,
+    color: '#475467',
+    fontWeight: '900',
+  },
+
+  saveButton: {
+    flex: 1,
+    height: 50,
+    borderRadius: 15,
+    backgroundColor: '#7C3AED',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#7C3AED',
+    shadowOpacity: 0.18,
+    shadowRadius: 11,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 3,
+  },
+
+  saveButtonDisabled: {
+    opacity: 0.55,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+
+  saveButtonPressed: {
+    transform: [{ scale: 0.985 }],
+  },
+
+  saveText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '900',
+  },
+
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F5F6F8',
+  },
+
+  loadingText: {
+    marginTop: 11,
+    color: '#7C8796',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+
+  pressed: {
+    opacity: 0.72,
   },
 });

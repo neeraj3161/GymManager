@@ -6,6 +6,8 @@ export interface PaymentRepository {
 
   getByMemberId(memberId: string): Promise<Payment[]>;
 
+  getMemberIdsWithPayments(): Promise<string[]>;
+
   getTotalPaidByMember(memberId: string): Promise<number>;
 
   getTotalPaidByMembership(membershipId: string): Promise<number>;

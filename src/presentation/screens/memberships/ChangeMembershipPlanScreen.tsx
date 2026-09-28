@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -23,7 +25,6 @@ import {
   MembershipStartDateOption,
   MembershipStartDateSection,
 } from '../../components/MembershipStartDateSection';
-
 import type { PreviousDueAction } from '../../components/PreviousDueSection';
 import { PaymentMethod } from '../../../domain/entities/Payment';
 import { useAuthStore } from '../../../store/authStore';
@@ -61,33 +62,30 @@ export function ChangeMembershipPlanScreen() {
     useState<PreviousDueAction>('collect');
 
   const [collectAmount, setCollectAmount] = useState('');
-
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [writeOffReason, setWriteOffReason] = useState('');
+
   const load = useCallback(async () => {
     try {
       setLoading(true);
 
-      const [currentMembership, allPlans] = await Promise.all([
+      const [membership, allPlans] = await Promise.all([
         container.repositories.membership.getByMemberId(memberId),
         container.useCases.getPlans.execute(),
       ]);
 
-      setCurrentMembership(currentMembership);
-      if (currentMembership) {
-        setStartDateOption(
-          isExpired(currentMembership.endDate) ? 'previous_end' : 'today',
-        );
-      }
+      setCurrentMembership(membership);
 
-      // ADD THIS HERE
-      if (currentMembership) {
+      if (membership) {
+        setStartDateOption(
+          isExpired(membership.endDate) ? 'previous_end' : 'today',
+        );
+
         const due = await container.useCases.getMembershipDue.execute(
-          currentMembership.id,
+          membership.id,
         );
 
         setPreviousDue(due.remainingAmount);
-
         setCollectAmount(
           due.remainingAmount > 0 ? String(due.remainingAmount) : '',
         );
@@ -98,11 +96,9 @@ export function ChangeMembershipPlanScreen() {
 
       const activePlans = allPlans.filter(plan => plan.active);
       setPlans(activePlans);
-
-      // whatever else your existing load() does...
     } catch (error) {
       Alert.alert(
-        'Error',
+        'Unable to load',
         error instanceof Error
           ? error.message
           : 'Unable to load membership information.',
@@ -132,7 +128,7 @@ export function ChangeMembershipPlanScreen() {
 
     setUnusedDays(result.unusedDays);
     setUnusedCredit(result.unusedCredit);
-  }, [currentMembership, previousDue, selectedPlanId, selectedPlan]);
+  }, [currentMembership, previousDue, selectedPlan]);
 
   const calculateUnusedCredit = (membership: Membership) => {
     const today = startOfDay(new Date());
@@ -147,9 +143,7 @@ export function ChangeMembershipPlanScreen() {
     }
 
     const totalDays = differenceInDays(startDate, endDate) + 1;
-
     const unusedDays = differenceInDays(today, endDate);
-
     const dailyRate = membership.amount / Math.max(totalDays, 1);
 
     const unusedCredit = Math.min(
@@ -187,7 +181,7 @@ export function ChangeMembershipPlanScreen() {
     }
 
     Alert.alert(
-      'Confirm Plan Change',
+      'Confirm plan change',
       `Change ${memberName}'s membership to ${selectedPlan.name}?\n\n` +
         `New plan: ₹${selectedPlan.amount.toLocaleString('en-IN')}\n` +
         `Unused credit: ₹${unusedCredit.toLocaleString('en-IN')}\n` +
@@ -239,8 +233,8 @@ export function ChangeMembershipPlanScreen() {
                 'finalAmount' in result ? result.finalAmount : finalAmount;
 
               Alert.alert(
-                'Plan Changed',
-                `Membership changed to ${selectedPlan.name}.\n\n` +
+                'Membership updated',
+                `Plan changed to ${selectedPlan.name}.\n\n` +
                   `Unused credit: ₹${resultUnusedCredit.toLocaleString(
                     'en-IN',
                   )}\n` +
@@ -249,7 +243,7 @@ export function ChangeMembershipPlanScreen() {
                   )}`,
                 [
                   {
-                    text: 'OK',
+                    text: 'Done',
                     onPress: () => navigation.goBack(),
                   },
                 ],
@@ -274,7 +268,7 @@ export function ChangeMembershipPlanScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.loading}>
-          <ActivityIndicator size="large" />
+          <ActivityIndicator size="small" />
           <Text style={styles.loadingText}>Loading membership...</Text>
         </View>
       </SafeAreaView>
@@ -285,177 +279,412 @@ export function ChangeMembershipPlanScreen() {
     return (
       <SafeAreaView style={styles.safe}>
         <View style={styles.empty}>
+          <View style={styles.emptyIcon}>
+            <Text style={styles.emptyIconText}>!</Text>
+          </View>
           <Text style={styles.emptyTitle}>No membership found</Text>
           <Text style={styles.emptyText}>
             This member does not have a membership that can be changed.
           </Text>
+          <Pressable
+            style={styles.secondaryButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.secondaryButtonText}>Go back</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );
   }
 
+  const currentPlanLabel =
+    currentMembership.amount > 0
+      ? `₹${currentMembership.amount.toLocaleString('en-IN')}`
+      : 'No amount';
+
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Change Membership Plan</Text>
-        <Text style={styles.memberName}>{memberName}</Text>
-
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Current Membership</Text>
-
-          <Text style={styles.label}>Amount</Text>
-          <Text style={styles.value}>
-            ₹{currentMembership.amount.toLocaleString('en-IN')}
-          </Text>
-
-          <Text style={styles.label}>Valid until</Text>
-          <Text style={styles.value}>
-            {formatDate(currentMembership.endDate)}
-          </Text>
-
-          {unusedDays > 0 ? (
-            <View style={styles.creditBox}>
-              <Text style={styles.creditTitle}>Unused membership</Text>
-
-              <Text style={styles.creditText}>
-                {unusedDays} day{unusedDays > 1 ? 's' : ''} remaining
-              </Text>
-
-              <Text style={styles.creditAmount}>
-                Credit: ₹{unusedCredit.toLocaleString('en-IN')}
-              </Text>
-            </View>
-          ) : (
-            <Text style={styles.noCredit}>No unused membership credit.</Text>
-          )}
-        </View>
-
-        <PreviousDueSection
-          amount={previousDue}
-          action={previousDueAction}
-          onActionChange={setPreviousDueAction}
-          collectAmount={collectAmount}
-          onCollectAmountChange={setCollectAmount}
-          paymentMethod={paymentMethod}
-          onPaymentMethodChange={setPaymentMethod}
-          writeOffReason={writeOffReason}
-          onWriteOffReasonChange={setWriteOffReason}
-        />
-
-        <MembershipStartDateSection
-          previousEndDate={currentMembership.endDate}
-          selected={startDateOption}
-          onChange={setStartDateOption}
-        />
-
-        <Text style={styles.sectionHeading}>Select New Plan</Text>
-
-        {plans.map(plan => {
-          const selected = plan.id === selectedPlanId;
-
-          return (
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.topBar}>
             <Pressable
-              key={plan.id}
-              style={[styles.planCard, selected && styles.selectedPlan]}
-              onPress={() => setSelectedPlanId(plan.id)}
+              onPress={() => navigation.goBack()}
+              hitSlop={12}
+              style={({ pressed }) => [
+                styles.backButton,
+                pressed && styles.pressed,
+              ]}
             >
-              <View style={styles.planInfo}>
-                <Text style={styles.planName}>{plan.name}</Text>
-
-                <Text style={styles.planDuration}>
-                  {plan.durationMonths} month
-                  {plan.durationMonths > 1 ? 's' : ''}
-                </Text>
-
-                {plan.description ? (
-                  <Text style={styles.planDescription}>{plan.description}</Text>
-                ) : null}
-              </View>
-
-              <View style={styles.planRight}>
-                <Text style={styles.planAmount}>
-                  ₹{plan.amount.toLocaleString('en-IN')}
-                </Text>
-
-                <View style={[styles.radio, selected && styles.radioSelected]}>
-                  {selected ? <View style={styles.radioDot} /> : null}
-                </View>
-              </View>
+              <Text style={styles.backText}>‹</Text>
             </Pressable>
-          );
-        })}
 
-        {selectedPlan ? (
-          <View style={styles.summary}>
-            <Text style={styles.summaryTitle}>Payment Summary</Text>
+            <View style={styles.topBarCopy}>
+              <Text style={styles.eyebrow}>MEMBERSHIP</Text>
+              <Text style={styles.screenTitle}>Change plan</Text>
+            </View>
+          </View>
 
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>New plan</Text>
-              <Text style={styles.summaryValue}>
-                ₹{selectedPlan.amount.toLocaleString('en-IN')}
+          <View style={styles.memberHero}>
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {memberName.trim().charAt(0).toUpperCase()}
               </Text>
             </View>
 
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>Unused credit</Text>
-              <Text style={styles.creditValue}>
-                - ₹{unusedCredit.toLocaleString('en-IN')}
+            <View style={styles.memberCopy}>
+              <Text style={styles.memberName} numberOfLines={1}>
+                {memberName}
+              </Text>
+              <Text style={styles.memberMeta}>
+                Current membership · {currentPlanLabel}
               </Text>
             </View>
 
-            {previousDue > 0 && previousDueAction === 'carry_forward' ? (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>
-                  Previous due carried forward
-                </Text>
-                <Text style={styles.dueValue}>
-                  + ₹{previousDue.toLocaleString('en-IN')}
-                </Text>
-              </View>
-            ) : null}
-
-            {previousDue > 0 && previousDueAction === 'write_off' ? (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>
-                  Previous due written off
-                </Text>
-                <Text style={styles.writeOffValue}>
-                  ₹{previousDue.toLocaleString('en-IN')}
-                </Text>
-              </View>
-            ) : null}
-
-            {previousDue > 0 && previousDueAction === 'collect' ? (
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Previous due to collect</Text>
-                <Text style={styles.collectValue}>
-                  ₹{previousDue.toLocaleString('en-IN')}
-                </Text>
-              </View>
-            ) : null}
-
-            <View style={styles.divider} />
-
-            <View style={styles.summaryRow}>
-              <Text style={styles.totalLabel}>Amount to pay</Text>
-              <Text style={styles.totalValue}>
-                ₹{finalAmount.toLocaleString('en-IN')}
+            <View style={styles.statusPill}>
+              <View style={styles.statusDot} />
+              <Text style={styles.statusText}>
+                {isExpired(currentMembership.endDate) ? 'Expired' : 'Active'}
               </Text>
             </View>
           </View>
-        ) : null}
 
-        <Pressable
-          style={[styles.confirmButton, changing && styles.disabledButton]}
-          onPress={changePlan}
-          disabled={changing}
-        >
-          <Text style={styles.confirmText}>
-            {changing ? 'Changing...' : 'Confirm Plan Change'}
-          </Text>
-        </Pressable>
-      </ScrollView>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionKicker}>01</Text>
+            <View style={styles.sectionCopy}>
+              <Text style={styles.sectionTitle}>Current membership</Text>
+              <Text style={styles.sectionSubtitle}>
+                Review what will carry over before selecting a new plan.
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.currentCard}>
+            <View style={styles.currentTopRow}>
+              <View>
+                <Text style={styles.mutedLabel}>CURRENT VALUE</Text>
+                <Text style={styles.currentAmount}>
+                  ₹{currentMembership.amount.toLocaleString('en-IN')}
+                </Text>
+              </View>
+
+              <View style={styles.validUntil}>
+                <Text style={styles.mutedLabel}>VALID UNTIL</Text>
+                <Text style={styles.validDate}>
+                  {formatDate(currentMembership.endDate)}
+                </Text>
+              </View>
+            </View>
+
+            {unusedDays > 0 ? (
+              <View style={styles.creditBanner}>
+                <View style={styles.creditIcon}>
+                  <Text style={styles.creditIconText}>↗</Text>
+                </View>
+                <View style={styles.creditCopy}>
+                  <Text style={styles.creditTitle}>
+                    Unused membership credit
+                  </Text>
+                  <Text style={styles.creditSubtitle}>
+                    {unusedDays} day{unusedDays > 1 ? 's' : ''} remaining
+                  </Text>
+                </View>
+                <Text style={styles.creditAmount}>
+                  ₹{unusedCredit.toLocaleString('en-IN')}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.noCreditRow}>
+                <Text style={styles.noCreditDot}>•</Text>
+                <Text style={styles.noCreditText}>
+                  No unused membership credit available
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {previousDue > 0 ? (
+            <>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionKicker}>02</Text>
+                <View style={styles.sectionCopy}>
+                  <Text style={styles.sectionTitle}>Previous due</Text>
+                  <Text style={styles.sectionSubtitle}>
+                    Decide what should happen to the outstanding amount.
+                  </Text>
+                </View>
+                <View style={styles.duePill}>
+                  <Text style={styles.duePillText}>
+                    ₹{previousDue.toLocaleString('en-IN')}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.componentCard}>
+                <PreviousDueSection
+                  amount={previousDue}
+                  action={previousDueAction}
+                  onActionChange={setPreviousDueAction}
+                  collectAmount={collectAmount}
+                  onCollectAmountChange={setCollectAmount}
+                  paymentMethod={paymentMethod}
+                  onPaymentMethodChange={setPaymentMethod}
+                  writeOffReason={writeOffReason}
+                  onWriteOffReasonChange={setWriteOffReason}
+                />
+              </View>
+            </>
+          ) : null}
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionKicker}>
+              {previousDue > 0 ? '03' : '02'}
+            </Text>
+            <View style={styles.sectionCopy}>
+              <Text style={styles.sectionTitle}>Start date</Text>
+              <Text style={styles.sectionSubtitle}>
+                Choose when the new membership should begin.
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.componentCard}>
+            <MembershipStartDateSection
+              previousEndDate={currentMembership.endDate}
+              selected={startDateOption}
+              onChange={setStartDateOption}
+            />
+          </View>
+
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionKicker}>
+              {previousDue > 0 ? '04' : '03'}
+            </Text>
+            <View style={styles.sectionCopy}>
+              <Text style={styles.sectionTitle}>Choose a new plan</Text>
+              <Text style={styles.sectionSubtitle}>
+                Select the membership you want to move this member to.
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.plans}>
+            {plans.length === 0 ? (
+              <View style={styles.noPlans}>
+                <Text style={styles.noPlansTitle}>No active plans</Text>
+                <Text style={styles.noPlansText}>
+                  Create an active membership plan before changing this
+                  membership.
+                </Text>
+              </View>
+            ) : null}
+
+            {plans.map((plan, index) => {
+              const selected = plan.id === selectedPlanId;
+
+              return (
+                <Pressable
+                  key={plan.id}
+                  onPress={() => setSelectedPlanId(plan.id)}
+                  style={({ pressed }) => [
+                    styles.planCard,
+                    selected && styles.planCardSelected,
+                    pressed && !selected && styles.planCardPressed,
+                  ]}
+                >
+                  <View style={styles.planLeading}>
+                    <View
+                      style={[
+                        styles.planRadio,
+                        selected && styles.planRadioSelected,
+                      ]}
+                    >
+                      {selected ? <View style={styles.planRadioDot} /> : null}
+                    </View>
+                  </View>
+
+                  <View style={styles.planBody}>
+                    <View style={styles.planNameRow}>
+                      <Text
+                        style={[
+                          styles.planName,
+                          selected && styles.planNameSelected,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {plan.name}
+                      </Text>
+                      {index === 0 ? (
+                        <View style={styles.planTag}>
+                          <Text style={styles.planTagText}>POPULAR</Text>
+                        </View>
+                      ) : null}
+                    </View>
+
+                    <Text style={styles.planDuration}>
+                      {plan.durationMonths} month
+                      {plan.durationMonths > 1 ? 's' : ''}
+                    </Text>
+
+                    {plan.description ? (
+                      <Text style={styles.planDescription} numberOfLines={2}>
+                        {plan.description}
+                      </Text>
+                    ) : null}
+                  </View>
+
+                  <View style={styles.planTrailing}>
+                    <Text
+                      style={[
+                        styles.planAmount,
+                        selected && styles.planAmountSelected,
+                      ]}
+                    >
+                      ₹{plan.amount.toLocaleString('en-IN')}
+                    </Text>
+                    <Text style={styles.planPerMonth}>
+                      {plan.durationMonths > 0
+                        ? `₹${Math.round(
+                            plan.amount / plan.durationMonths,
+                          ).toLocaleString('en-IN')}/mo`
+                        : ''}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {selectedPlan ? (
+            <View style={styles.summaryCard}>
+              <View style={styles.summaryTop}>
+                <View>
+                  <Text style={styles.summaryEyebrow}>PAYMENT SUMMARY</Text>
+                  <Text style={styles.summaryTitle}>{selectedPlan.name}</Text>
+                </View>
+
+                <Text style={styles.summaryAmount}>
+                  ₹{finalAmount.toLocaleString('en-IN')}
+                </Text>
+              </View>
+
+              <View style={styles.summaryRows}>
+                <SummaryRow
+                  label="New plan"
+                  value={`₹${selectedPlan.amount.toLocaleString('en-IN')}`}
+                />
+
+                {unusedCredit > 0 ? (
+                  <SummaryRow
+                    label="Unused credit"
+                    value={`− ₹${unusedCredit.toLocaleString('en-IN')}`}
+                    valueStyle={styles.positive}
+                  />
+                ) : null}
+
+                {previousDue > 0 && previousDueAction === 'carry_forward' ? (
+                  <SummaryRow
+                    label="Previous due carried forward"
+                    value={`+ ₹${previousDue.toLocaleString('en-IN')}`}
+                    valueStyle={styles.attention}
+                  />
+                ) : null}
+
+                {previousDue > 0 && previousDueAction === 'write_off' ? (
+                  <SummaryRow
+                    label="Previous due written off"
+                    value={`₹${previousDue.toLocaleString('en-IN')}`}
+                    valueStyle={styles.mutedValue}
+                  />
+                ) : null}
+
+                {previousDue > 0 && previousDueAction === 'collect' ? (
+                  <SummaryRow
+                    label="Previous due to collect"
+                    value={`₹${previousDue.toLocaleString('en-IN')}`}
+                    valueStyle={styles.attention}
+                  />
+                ) : null}
+              </View>
+
+              <View style={styles.summaryDivider} />
+
+              <View style={styles.totalRow}>
+                <Text style={styles.totalLabel}>Amount to pay</Text>
+                <Text style={styles.totalValue}>
+                  ₹{finalAmount.toLocaleString('en-IN')}
+                </Text>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.selectionHint}>
+              <View style={styles.selectionHintDot} />
+              <Text style={styles.selectionHintText}>
+                Select a plan to see the exact amount before confirming.
+              </Text>
+            </View>
+          )}
+
+          <View style={styles.bottomSpace} />
+        </ScrollView>
+
+        <View style={styles.ctaBar}>
+          <View style={styles.ctaCopy}>
+            <Text style={styles.ctaLabel}>
+              {selectedPlan ? 'AMOUNT TO PAY' : 'SELECT A PLAN'}
+            </Text>
+            <Text style={styles.ctaAmount}>
+              {selectedPlan ? `₹${finalAmount.toLocaleString('en-IN')}` : '—'}
+            </Text>
+          </View>
+
+          <Pressable
+            style={({ pressed }) => [
+              styles.confirmButton,
+              (!selectedPlan || changing) && styles.confirmButtonDisabled,
+              pressed &&
+                selectedPlan &&
+                !changing &&
+                styles.confirmButtonPressed,
+            ]}
+            onPress={changePlan}
+            disabled={changing || !selectedPlan}
+          >
+            {changing ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <Text style={styles.confirmText}>Confirm change</Text>
+                <Text style={styles.confirmArrow}>→</Text>
+              </>
+            )}
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+function SummaryRow({
+  label,
+  value,
+  valueStyle,
+}: {
+  label: string;
+  value: string;
+  valueStyle?: object;
+}) {
+  return (
+    <View style={styles.summaryRow}>
+      <Text style={styles.summaryLabel}>{label}</Text>
+      <Text style={[styles.summaryValue, valueStyle]}>{value}</Text>
+    </View>
   );
 }
 
@@ -481,181 +710,497 @@ function formatDate(date: string): string {
 function isExpired(endDate: string): boolean {
   const end = new Date(endDate);
   const today = new Date();
+
   end.setHours(0, 0, 0, 0);
   today.setHours(0, 0, 0, 0);
+
   return end < today;
 }
 
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#F6F7F9',
+    backgroundColor: '#F5F7FA',
   },
 
-  container: {
-    padding: 16,
-    paddingBottom: 30,
-  },
-
-  title: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#111827',
-  },
-
-  memberName: {
-    marginTop: 4,
-    fontSize: 15,
-    color: '#6B7280',
-    marginBottom: 18,
-  },
-
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 17,
-    marginBottom: 22,
-  },
-
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#111827',
-    marginBottom: 15,
-  },
-
-  label: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 7,
-  },
-
-  value: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-    marginTop: 2,
-  },
-
-  creditBox: {
-    backgroundColor: '#EFF6FF',
-    borderRadius: 12,
-    padding: 13,
-    marginTop: 15,
-  },
-
-  creditTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#1D4ED8',
-  },
-
-  creditText: {
-    marginTop: 4,
-    color: '#374151',
-  },
-
-  creditAmount: {
-    marginTop: 5,
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#1D4ED8',
-  },
-
-  noCredit: {
-    marginTop: 15,
-    color: '#6B7280',
-  },
-
-  sectionHeading: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#111827',
-    marginBottom: 10,
-  },
-
-  planCard: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 15,
-    padding: 15,
-    marginBottom: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-
-  selectedPlan: {
-    borderColor: '#2563EB',
-    borderWidth: 2,
-  },
-
-  planInfo: {
+  flex: {
     flex: 1,
   },
 
-  planName: {
-    fontSize: 16,
-    fontWeight: '800',
+  content: {
+    paddingHorizontal: 18,
+    paddingTop: 12,
+    paddingBottom: 124,
+  },
+
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+
+  backButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8ECF2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+
+  backText: {
+    fontSize: 30,
+    lineHeight: 30,
     color: '#111827',
+    marginTop: -2,
   },
 
-  planDuration: {
-    marginTop: 3,
-    color: '#6B7280',
+  topBarCopy: {
+    flex: 1,
   },
 
-  planDescription: {
-    marginTop: 4,
-    fontSize: 12,
-    color: '#6B7280',
-  },
-
-  planRight: {
-    alignItems: 'flex-end',
-    gap: 8,
-  },
-
-  planAmount: {
-    fontSize: 17,
+  eyebrow: {
+    fontSize: 10,
+    letterSpacing: 1.5,
     fontWeight: '800',
-    color: '#111827',
+    color: '#7C3AED',
   },
 
-  radio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#9CA3AF',
+  screenTitle: {
+    marginTop: 2,
+    fontSize: 26,
+    lineHeight: 31,
+    fontWeight: '900',
+    color: '#101828',
+    letterSpacing: -0.5,
+  },
+
+  memberHero: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#151A24',
+    borderRadius: 24,
+    padding: 16,
+    marginBottom: 28,
+    shadowColor: '#111827',
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 9 },
+    elevation: 5,
+  },
+
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 16,
+    backgroundColor: '#7C3AED',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  radioSelected: {
-    borderColor: '#2563EB',
+  avatarText: {
+    color: '#FFFFFF',
+    fontSize: 19,
+    fontWeight: '900',
   },
 
-  radioDot: {
+  memberCopy: {
+    flex: 1,
+    marginHorizontal: 12,
+  },
+
+  memberName: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+
+  memberMeta: {
+    marginTop: 4,
+    color: '#AEB6C4',
+    fontSize: 12,
+  },
+
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#4ADE80',
+    marginRight: 6,
+  },
+
+  statusText: {
+    color: '#E8EDF4',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+
+  sectionKicker: {
+    width: 30,
+    paddingTop: 3,
+    fontSize: 11,
+    fontWeight: '900',
+    color: '#7C3AED',
+    letterSpacing: 0.5,
+  },
+
+  sectionCopy: {
+    flex: 1,
+    paddingRight: 8,
+  },
+
+  sectionTitle: {
+    fontSize: 18,
+    lineHeight: 22,
+    fontWeight: '900',
+    color: '#111827',
+    letterSpacing: -0.2,
+  },
+
+  sectionSubtitle: {
+    marginTop: 3,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#7A8492',
+  },
+
+  duePill: {
+    borderRadius: 12,
+    backgroundColor: '#FFF0F0',
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+
+  duePillText: {
+    color: '#C62828',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+
+  currentCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 17,
+    borderWidth: 1,
+    borderColor: '#E9EDF3',
+    marginBottom: 27,
+  },
+
+  currentTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+
+  mutedLabel: {
+    fontSize: 9,
+    letterSpacing: 1.1,
+    fontWeight: '800',
+    color: '#98A2B3',
+  },
+
+  currentAmount: {
+    marginTop: 5,
+    fontSize: 28,
+    lineHeight: 32,
+    fontWeight: '900',
+    color: '#101828',
+    letterSpacing: -0.8,
+  },
+
+  validUntil: {
+    alignItems: 'flex-end',
+  },
+
+  validDate: {
+    marginTop: 6,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#344054',
+  },
+
+  creditBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 18,
+    padding: 12,
+    backgroundColor: '#F3F0FF',
+    borderRadius: 15,
+  },
+
+  creditIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 11,
+    backgroundColor: '#E7DFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  creditIconText: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#6D28D9',
+  },
+
+  creditCopy: {
+    flex: 1,
+    marginLeft: 10,
+  },
+
+  creditTitle: {
+    fontSize: 12,
+    fontWeight: '900',
+    color: '#4C1D95',
+  },
+
+  creditSubtitle: {
+    marginTop: 2,
+    fontSize: 11,
+    color: '#6B6290',
+  },
+
+  creditAmount: {
+    marginLeft: 8,
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#6D28D9',
+  },
+
+  noCreditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 18,
+  },
+
+  noCreditDot: {
+    fontSize: 14,
+    color: '#98A2B3',
+    marginRight: 7,
+  },
+
+  noCreditText: {
+    color: '#98A2B3',
+    fontSize: 12,
+  },
+
+  componentCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E9EDF3',
+    padding: 14,
+    marginBottom: 27,
+  },
+
+  plans: {
+    marginBottom: 8,
+  },
+
+  planCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E9EDF3',
+    borderRadius: 20,
+    padding: 15,
+    marginBottom: 11,
+  },
+
+  planCardSelected: {
+    borderColor: '#7C3AED',
+    backgroundColor: '#FAF8FF',
+    shadowColor: '#7C3AED',
+    shadowOpacity: 0.09,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
+  },
+
+  planCardPressed: {
+    opacity: 0.75,
+    transform: [{ scale: 0.99 }],
+  },
+
+  planLeading: {
+    width: 28,
+    alignItems: 'flex-start',
+  },
+
+  planRadio: {
+    width: 21,
+    height: 21,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: '#CBD2DC',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  planRadioSelected: {
+    borderColor: '#7C3AED',
+  },
+
+  planRadioDot: {
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: '#2563EB',
+    backgroundColor: '#7C3AED',
   },
 
-  summary: {
+  planBody: {
+    flex: 1,
+    paddingRight: 10,
+  },
+
+  planNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+
+  planName: {
+    flexShrink: 1,
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#182230',
+  },
+
+  planNameSelected: {
+    color: '#5B21B6',
+  },
+
+  planTag: {
+    marginLeft: 7,
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    backgroundColor: '#EEE9FF',
+  },
+
+  planTagText: {
+    fontSize: 8,
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    color: '#6D28D9',
+  },
+
+  planDuration: {
+    marginTop: 5,
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#667085',
+  },
+
+  planDescription: {
+    marginTop: 4,
+    fontSize: 11,
+    lineHeight: 16,
+    color: '#8A94A3',
+  },
+
+  planTrailing: {
+    alignItems: 'flex-end',
+    minWidth: 74,
+  },
+
+  planAmount: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#182230',
+  },
+
+  planAmountSelected: {
+    color: '#5B21B6',
+  },
+
+  planPerMonth: {
+    marginTop: 3,
+    fontSize: 10,
+    color: '#98A2B3',
+    fontWeight: '700',
+  },
+
+  noPlans: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 17,
-    marginTop: 12,
+    borderWidth: 1,
+    borderColor: '#E9EDF3',
+    borderRadius: 20,
+    padding: 18,
+    marginBottom: 11,
+  },
+
+  noPlansTitle: {
+    fontSize: 15,
+    fontWeight: '900',
+    color: '#101828',
+  },
+
+  noPlansText: {
+    marginTop: 5,
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#7A8492',
+  },
+
+  summaryCard: {
+    backgroundColor: '#151A24',
+    borderRadius: 24,
+    padding: 18,
+    marginTop: 10,
+    shadowColor: '#101828',
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+  },
+
+  summaryTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+  },
+
+  summaryEyebrow: {
+    color: '#8E96A4',
+    fontSize: 9,
+    letterSpacing: 1.2,
+    fontWeight: '800',
   },
 
   summaryTitle: {
+    marginTop: 5,
+    color: '#FFFFFF',
     fontSize: 17,
-    fontWeight: '800',
-    color: '#111827',
-    marginBottom: 13,
+    fontWeight: '900',
+  },
+
+  summaryAmount: {
+    color: '#FFFFFF',
+    fontSize: 24,
+    fontWeight: '900',
+  },
+
+  summaryRows: {
+    marginTop: 18,
   },
 
   summaryRow: {
@@ -666,97 +1211,221 @@ const styles = StyleSheet.create({
   },
 
   summaryLabel: {
-    color: '#6B7280',
+    flex: 1,
+    fontSize: 12,
+    color: '#AEB6C4',
   },
 
   summaryValue: {
-    fontWeight: '700',
-    color: '#111827',
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#F4F6F8',
   },
 
-  creditValue: {
-    fontWeight: '700',
-    color: '#16A34A',
+  positive: {
+    color: '#86EFAC',
   },
 
-  dueValue: {
-    fontWeight: '700',
-    color: '#B00020',
+  attention: {
+    color: '#FDBA74',
   },
 
-  writeOffValue: {
-    fontWeight: '700',
-    color: '#6B7280',
+  mutedValue: {
+    color: '#B8BEC8',
   },
 
-  collectValue: {
-    fontWeight: '700',
-    color: '#111827',
-  },
-
-  divider: {
+  summaryDivider: {
     height: 1,
-    backgroundColor: '#E5E7EB',
-    marginVertical: 10,
+    backgroundColor: '#303744',
+    marginVertical: 14,
+  },
+
+  totalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
 
   totalLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '800',
-    color: '#111827',
+    color: '#FFFFFF',
   },
 
   totalValue: {
     fontSize: 20,
-    fontWeight: '800',
-    color: '#111827',
+    fontWeight: '900',
+    color: '#FFFFFF',
+  },
+
+  selectionHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 13,
+  },
+
+  selectionHintDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#7C3AED',
+    marginRight: 8,
+  },
+
+  selectionHintText: {
+    flex: 1,
+    fontSize: 11,
+    lineHeight: 16,
+    color: '#8A94A3',
+  },
+
+  bottomSpace: {
+    height: 20,
+  },
+
+  ctaBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E7EBF0',
+    paddingHorizontal: 18,
+    paddingTop: 11,
+    paddingBottom: Platform.OS === 'ios' ? 15 : 11,
+    shadowColor: '#101828',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: -5 },
+    elevation: 12,
+  },
+
+  ctaCopy: {
+    flex: 1,
+    marginRight: 12,
+  },
+
+  ctaLabel: {
+    fontSize: 9,
+    letterSpacing: 1,
+    fontWeight: '900',
+    color: '#98A2B3',
+  },
+
+  ctaAmount: {
+    marginTop: 2,
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#101828',
   },
 
   confirmButton: {
-    backgroundColor: '#111827',
-    borderRadius: 12,
-    paddingVertical: 14,
+    minWidth: 150,
+    height: 51,
+    paddingHorizontal: 17,
+    borderRadius: 17,
+    backgroundColor: '#7C3AED',
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 18,
+    justifyContent: 'center',
+    shadowColor: '#7C3AED',
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
+  },
+
+  confirmButtonDisabled: {
+    backgroundColor: '#C7CBD3',
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+
+  confirmButtonPressed: {
+    transform: [{ scale: 0.98 }],
   },
 
   confirmText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: '900',
   },
 
-  disabledButton: {
-    opacity: 0.5,
+  confirmArrow: {
+    marginLeft: 8,
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '900',
+  },
+
+  secondaryButton: {
+    marginTop: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 14,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E7EE',
+  },
+
+  secondaryButtonText: {
+    color: '#344054',
+    fontWeight: '800',
+    fontSize: 13,
   },
 
   loading: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingBottom: 40,
   },
 
   loadingText: {
-    marginTop: 10,
-    color: '#6B7280',
+    marginTop: 12,
+    color: '#7A8492',
+    fontSize: 12,
+    fontWeight: '600',
   },
 
   empty: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    padding: 30,
+    justifyContent: 'center',
+    paddingHorizontal: 36,
+  },
+
+  emptyIcon: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    backgroundColor: '#FFF4E8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+
+  emptyIconText: {
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#D97706',
   },
 
   emptyTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#111827',
+    fontSize: 20,
+    fontWeight: '900',
+    color: '#101828',
   },
 
   emptyText: {
-    marginTop: 8,
+    marginTop: 7,
     textAlign: 'center',
-    color: '#6B7280',
+    fontSize: 13,
+    lineHeight: 19,
+    color: '#7A8492',
+  },
+
+  pressed: {
+    opacity: 0.7,
   },
 });

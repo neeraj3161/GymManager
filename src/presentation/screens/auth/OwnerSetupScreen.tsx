@@ -13,12 +13,17 @@ import {
 } from 'react-native';
 
 import { container } from '../../../di/container';
-import { useAuthStore } from '../../../store/authStore';
 
-export function OwnerSetupScreen() {
-  const login = useAuthStore(state => state.login);
+interface OwnerSetupScreenProps {
+  onOwnerCreated: () => void;
+}
 
+export function OwnerSetupScreen({ onOwnerCreated }: OwnerSetupScreenProps) {
   const [name, setName] = useState('');
+  const [gymName, setGymName] = useState('');
+  const [gymPhone, setGymPhone] = useState('');
+  const [gymEmail, setGymEmail] = useState('');
+  const [gymAddress, setGymAddress] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -27,7 +32,13 @@ export function OwnerSetupScreen() {
   const handleCreateOwner = async () => {
     if (loading) return;
 
-    if (!name.trim() || !username.trim() || !password || !confirmPassword) {
+    if (
+      !name.trim() ||
+      !gymName.trim() ||
+      !username.trim() ||
+      !password ||
+      !confirmPassword
+    ) {
       Alert.alert('Missing information', 'Please fill in all fields.');
       return;
     }
@@ -43,18 +54,17 @@ export function OwnerSetupScreen() {
     try {
       setLoading(true);
 
-      const user = await container.useCases.createOwner.execute({
+      await container.useCases.createOwner.execute({
         name: name.trim(),
+        gymName: gymName.trim(),
+        gymPhone: gymPhone.trim(),
+        gymEmail: gymEmail.trim(),
+        gymAddress: gymAddress.trim(),
         username: username.trim(),
         password,
       });
 
-      await login(user);
-
-      Alert.alert(
-        'Owner account created',
-        'Your gym owner account has been created.',
-      );
+      onOwnerCreated();
     } catch (error) {
       Alert.alert(
         'Setup failed',
@@ -86,6 +96,53 @@ export function OwnerSetupScreen() {
             <Text style={styles.title}>Set up your gym</Text>
 
             <Text style={styles.subtitle}>Create the first owner account.</Text>
+
+            <Text style={styles.sectionTitle}>Gym details</Text>
+
+            <Text style={styles.label}>Gym Name *</Text>
+
+            <TextInput
+              value={gymName}
+              onChangeText={setGymName}
+              placeholder="Enter your gym name"
+              returnKeyType="next"
+              style={styles.input}
+            />
+
+            <Text style={styles.label}>Phone</Text>
+
+            <TextInput
+              value={gymPhone}
+              onChangeText={setGymPhone}
+              placeholder="Gym phone number"
+              keyboardType="phone-pad"
+              returnKeyType="next"
+              style={styles.input}
+            />
+
+            <Text style={styles.label}>Email</Text>
+
+            <TextInput
+              value={gymEmail}
+              onChangeText={setGymEmail}
+              placeholder="Gym email address"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              returnKeyType="next"
+              style={styles.input}
+            />
+
+            <Text style={styles.label}>Address</Text>
+
+            <TextInput
+              value={gymAddress}
+              onChangeText={setGymAddress}
+              placeholder="Gym address"
+              multiline
+              style={[styles.input, styles.addressInput]}
+            />
+
+            <Text style={styles.sectionTitle}>Owner account</Text>
 
             <Text style={styles.label}>Your Name</Text>
 
@@ -198,6 +255,14 @@ const styles = StyleSheet.create({
     color: '#374151',
   },
 
+  sectionTitle: {
+    marginTop: 8,
+    marginBottom: 14,
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#111827',
+  },
+
   input: {
     height: 52,
     backgroundColor: '#FFFFFF',
@@ -205,6 +270,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     marginBottom: 17,
     color: '#111827',
+  },
+
+  addressInput: {
+    height: 82,
+    paddingTop: 14,
+    textAlignVertical: 'top',
   },
 
   button: {

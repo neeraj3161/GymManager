@@ -1,4 +1,5 @@
 import { User } from '../../domain/entities/User';
+import { GymRepository } from '../../domain/repositories/GymRepository';
 import { UserRepository } from '../../domain/repositories/UserRepository';
 import { IdGenerator } from '../shared/IdGenerator';
 import { PasswordHasher } from './Login';
@@ -7,6 +8,10 @@ export interface CreateOwnerInput {
   name: string;
   username: string;
   password: string;
+  gymName: string;
+  gymPhone?: string;
+  gymEmail?: string;
+  gymAddress?: string;
 }
 
 export class CreateOwnerUseCase {
@@ -14,11 +19,13 @@ export class CreateOwnerUseCase {
     private readonly userRepository: UserRepository,
     private readonly passwordHasher: PasswordHasher,
     private readonly idGenerator: IdGenerator,
+    private readonly gymRepository: GymRepository,
   ) {}
 
   async execute(input: CreateOwnerInput): Promise<User> {
     const name = input.name.trim();
     const username = input.username.trim();
+    const gymName = input.gymName.trim();
 
     if (!name) {
       throw new Error('Name is required');
@@ -26,6 +33,10 @@ export class CreateOwnerUseCase {
 
     if (!username) {
       throw new Error('Username is required');
+    }
+
+    if (!gymName) {
+      throw new Error('Gym name is required');
     }
 
     if (username.length < 3) {
@@ -68,6 +79,26 @@ export class CreateOwnerUseCase {
     };
 
     await this.userRepository.save(user);
+
+    const nowForGym = new Date().toISOString();
+    const existingGym = await this.gymRepository.get();
+    const gym = {
+      id: existingGym?.id ?? this.idGenerator.generate(),
+      name: gymName,
+      logoUri: existingGym?.logoUri,
+      phone: input.gymPhone?.trim() || undefined,
+      email: input.gymEmail?.trim() || undefined,
+      address: input.gymAddress?.trim() || undefined,
+      currency: existingGym?.currency ?? 'INR',
+      createdAt: existingGym?.createdAt ?? nowForGym,
+      updatedAt: nowForGym,
+    };
+
+    if (existingGym) {
+      await this.gymRepository.update(gym);
+    } else {
+      await this.gymRepository.save(gym);
+    }
 
     return user;
   }

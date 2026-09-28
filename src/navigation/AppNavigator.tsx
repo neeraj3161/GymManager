@@ -25,6 +25,7 @@ import { AddMemberScreen } from '../presentation/screens/members/AddMemberScreen
 import { MemberDetailsScreen } from '../presentation/screens/members/MemberDetailsScreen';
 
 import PaymentsScreen from '../presentation/screens/payments/PaymentsScreen';
+import { PaymentsOverviewScreen } from '../presentation/screens/payments/PaymentsOverviewScreen';
 import { PlansScreen } from '../presentation/screens/plans/PlansScreen';
 
 import { BirthdaysScreen } from '../presentation/screens/birthdays/BirthdaysScreen';
@@ -51,6 +52,7 @@ export type RootStackParamList = {
   };
 
   Payments: undefined;
+  PaymentsOverview: undefined;
   Plans: undefined;
   Birthdays: undefined;
   Staff: undefined;
@@ -175,7 +177,11 @@ export function AppNavigator() {
         <Stack.Navigator>
           <Stack.Screen
             name="OwnerSetup"
-            component={OwnerSetupScreen}
+            children={() => (
+              <OwnerSetupScreen
+                onOwnerCreated={() => setInitialMode('ready')}
+              />
+            )}
             options={{ headerShown: false }}
           />
         </Stack.Navigator>
@@ -229,6 +235,12 @@ export function AppNavigator() {
             name="Payments"
             component={PaymentsScreen}
             options={{ title: 'Payments' }}
+          />
+
+          <Stack.Screen
+            name="PaymentsOverview"
+            component={PaymentsOverviewScreen}
+            options={{ title: 'Payments Received' }}
           />
 
           <Stack.Screen

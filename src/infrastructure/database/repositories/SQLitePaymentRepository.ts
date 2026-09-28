@@ -71,6 +71,18 @@ export class SQLitePaymentRepository implements PaymentRepository {
     return rows.map(row => this.toDomain(row));
   }
 
+  async getMemberIdsWithPayments(): Promise<string[]> {
+    const rows = await this.db.query<{ member_id: string }>(
+      `
+      SELECT DISTINCT member_id
+      FROM payments
+      ORDER BY member_id
+      `,
+    );
+
+    return rows.map(row => row.member_id);
+  }
+
   async getTotalPaidByMember(memberId: string): Promise<number> {
     const rows = await this.db.query<{ total: number | null }>(
       `

@@ -452,12 +452,13 @@ function getStatusStyle(status: MemberFeeStatus['status']) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F6F7F9',
+    backgroundColor: '#F6F7FB',
   },
 
   content: {
-    padding: 16,
-    paddingBottom: 40,
+    paddingHorizontal: 18,
+    paddingTop: 16,
+    paddingBottom: 42,
   },
 
   center: {
@@ -468,30 +469,32 @@ const styles = StyleSheet.create({
 
   loadingText: {
     marginTop: 12,
-    color: '#6B7280',
+    color: '#7B8496',
   },
 
   title: {
-    fontSize: 28,
+    fontSize: 30,
     fontWeight: '800',
-    color: '#111827',
+    color: '#0D1220',
   },
 
   memberName: {
     fontSize: 17,
     marginTop: 4,
     marginBottom: 18,
-    color: '#6B7280',
+    color: '#7B8496',
   },
 
   membershipCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 20,
+    padding: 18,
     marginBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#E9ECF2',
   },
 
   membershipInfo: {
@@ -501,7 +504,7 @@ const styles = StyleSheet.create({
 
   membershipLabel: {
     fontSize: 12,
-    color: '#6B7280',
+    color: '#7B8496',
     fontWeight: '600',
   },
 
@@ -509,37 +512,39 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontSize: 18,
     fontWeight: '800',
-    color: '#111827',
+    color: '#0D1220',
   },
 
   membershipDates: {
     marginTop: 5,
     fontSize: 13,
-    color: '#6B7280',
+    color: '#7B8496',
   },
 
   membershipAmount: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#111827',
+    color: '#0D1220',
   },
 
   noMembershipCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    backgroundColor: '#FFF5E6',
+    borderRadius: 20,
     padding: 18,
     marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#F5D9A8',
   },
 
   noMembershipTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#111827',
+    color: '#0D1220',
   },
 
   noMembershipText: {
     marginTop: 5,
-    color: '#6B7280',
+    color: '#7B8496',
     lineHeight: 20,
   },
 
@@ -552,20 +557,22 @@ const styles = StyleSheet.create({
   summaryCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
+    borderRadius: 18,
     padding: 16,
+    borderWidth: 1,
+    borderColor: '#E9ECF2',
   },
 
   summaryLabel: {
     fontSize: 13,
-    color: '#6B7280',
+    color: '#7B8496',
   },
 
   summaryAmount: {
     marginTop: 5,
     fontSize: 22,
     fontWeight: '800',
-    color: '#111827',
+    color: '#0D1220',
   },
 
   dueAmount: {
@@ -574,16 +581,18 @@ const styles = StyleSheet.create({
 
   statusCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 14,
+    borderRadius: 18,
     padding: 15,
     marginBottom: 20,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E9ECF2',
   },
 
   statusLabel: {
-    color: '#6B7280',
+    color: '#7B8496',
     fontWeight: '600',
   },
 
@@ -617,24 +626,26 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginBottom: 12,
     marginTop: 6,
-    color: '#111827',
+    color: '#0D1220',
   },
 
   adjustmentsHint: {
     marginTop: -5,
     marginBottom: 8,
-    color: '#6B7280',
+    color: '#7B8496',
     fontSize: 12,
   },
 
   input: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 11,
+    borderRadius: 14,
     paddingHorizontal: 14,
     paddingVertical: 13,
     fontSize: 16,
     marginBottom: 12,
-    color: '#111827',
+    color: '#0D1220',
+    borderWidth: 1,
+    borderColor: '#E9ECF2',
   },
 
   notesInput: {
@@ -646,7 +657,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     marginBottom: 8,
-    color: '#111827',
+    color: '#0D1220',
   },
 
   methods: {
@@ -658,19 +669,22 @@ const styles = StyleSheet.create({
 
   methodButton: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 9,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: '#E9ECF2',
   },
 
   selectedMethod: {
-    backgroundColor: '#111827',
+    backgroundColor: '#0D1220',
+    borderColor: '#0D1220',
   },
 
   methodText: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#374151',
+    color: '#303849',
   },
 
   selectedMethodText: {
@@ -679,8 +693,8 @@ const styles = StyleSheet.create({
 
   recordButton: {
     height: 52,
-    backgroundColor: '#111827',
-    borderRadius: 12,
+    backgroundColor: '#0D1220',
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 20,
@@ -697,8 +711,8 @@ const styles = StyleSheet.create({
   },
 
   paidCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 14,
+    backgroundColor: '#EAF8F2',
+    borderRadius: 18,
     padding: 18,
     marginBottom: 20,
   },
@@ -716,11 +730,13 @@ const styles = StyleSheet.create({
 
   paymentCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
     marginBottom: 10,
     flexDirection: 'row',
     justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#E9ECF2',
   },
 
   paymentInfo: {
@@ -730,12 +746,12 @@ const styles = StyleSheet.create({
   paymentAmount: {
     fontSize: 18,
     fontWeight: '800',
-    color: '#111827',
+    color: '#0D1220',
   },
 
   paymentDate: {
     fontSize: 13,
-    color: '#6B7280',
+    color: '#7B8496',
     marginTop: 4,
   },
 

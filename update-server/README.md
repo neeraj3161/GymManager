@@ -22,7 +22,16 @@ address, such as `http://192.168.1.27:8080`.
 
 ## Hosting
 
-Host this directory on a Node.js service and set `PORT` if required:
+This repository includes a Render blueprint at the project root. In Render,
+choose **New > Blueprint**, connect this repository, and deploy
+`render.yaml`. It creates the `gymmanager-update-server` service with the
+`/health` health check and uses the public URL expected by the Android app:
+
+```text
+https://gymmanager-update-server.onrender.com/update.json
+```
+
+For another Node.js host, host this directory and set `PORT` if required:
 
 ```sh
 PORT=8080 node server.js
@@ -34,10 +43,9 @@ Set `PUBLIC_BASE_URL` when the server is behind a proxy or has a public URL:
 PUBLIC_BASE_URL=https://updates.example.com/gymmanager node server.js
 ```
 
-Replace the production URL in `src/services/appUpdateService.ts` with the
-public `/update.json` URL. The APK must be signed with the same signing key as the
-installed app; the current Gradle release signing uses the debug key only for
-local testing.
+The APK must be signed with the same signing key as the installed app. The
+current Gradle release signing uses the debug key only for local testing and
+must be replaced with a private release keystore before distributing updates.
 
 When releasing another APK, increase `versionCode`, update `versionName`, copy
 the APK to `update-server/apk`, and update `update.json`.

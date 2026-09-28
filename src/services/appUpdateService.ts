@@ -15,7 +15,8 @@ export type AppUpdateInfo = {
   update: UpdateManifest;
 };
 
-const UPDATE_MANIFEST_URL = 'http://192.168.1.27:8080/update.json';
+const UPDATE_MANIFEST_URL =
+  'https://gymmanager-update-server.onrender.com/update.json';
 
 const REQUEST_TIMEOUT_MS = 10_000;
 

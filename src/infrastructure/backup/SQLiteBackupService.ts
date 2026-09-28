@@ -13,6 +13,12 @@ type SchemaRow = {
 
 type ColumnRow = { name: string };
 type SqlValueRow = { value: string | null };
+type ForeignKeyViolationRow = {
+  table: string;
+  rowid: number | null;
+  parent: string;
+  fkid: number;
+};
 
 function quoteIdentifier(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
@@ -139,7 +145,8 @@ export class SQLiteBackupService implements BackupService {
         normalized !== 'BEGIN TRANSACTION' &&
         normalized !== 'BEGIN' &&
         normalized !== 'COMMIT' &&
-        normalized !== 'END'
+        normalized !== 'END' &&
+        !/^PRAGMA\s+FOREIGN_KEYS\s*=/.test(normalized)
       );
     });
 
@@ -151,6 +158,24 @@ export class SQLiteBackupService implements BackupService {
       throw new Error('Invalid GymManager SQL backup file.');
     }
 
-    await this.database.executeBatch(statements.map(query => ({ query })));
+    await this.database.execute('PRAGMA foreign_keys = OFF');
+
+    try {
+      await this.database.executeBatch(statements.map(query => ({ query })));
+
+      const violations = await this.database.query<ForeignKeyViolationRow>(
+        'PRAGMA foreign_key_check',
+      );
+
+      if (violations.length > 0) {
+        const firstViolation = violations[0];
+        throw new Error(
+          `Backup contains ${violations.length} foreign-key violation(s); ` +
+            `table "${firstViolation.table}" references "${firstViolation.parent}".`,
+        );
+      }
+    } finally {
+      await this.database.execute('PRAGMA foreign_keys = ON');
+    }
   }
 }

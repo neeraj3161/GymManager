@@ -5,6 +5,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
@@ -47,13 +48,12 @@ export function AddMemberScreen() {
 
   const [startDate, setStartDate] = useState(formatDateForInput(new Date()));
 
-  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentAmount, setPaymentAmount] = useState('0');
   const [paymentMethod, setPaymentMethod] = useState<PaymentOption>('cash');
 
   const [loadingPlans, setLoadingPlans] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
   const [showDobPicker, setShowDobPicker] = useState(false);
 
   useEffect(() => {
@@ -65,14 +65,12 @@ export function AddMemberScreen() {
       setError(null);
 
       const result = await container.useCases.getPlans.execute();
-
       const activePlans = result.filter(plan => plan.active);
 
       setPlans(activePlans);
 
       if (activePlans.length > 0) {
         setSelectedPlanId(activePlans[0].id);
-        setPaymentAmount(String(activePlans[0].amount));
       }
     } catch (err) {
       console.error('Failed to load plans:', err);
@@ -114,17 +112,28 @@ export function AddMemberScreen() {
     ).getDate();
 
     end.setDate(Math.min(originalDay, lastDay));
-
     end.setDate(end.getDate() - 1);
 
     return formatDisplayDate(end);
   }, [selectedPlan, startDate]);
 
+  const paymentNumber = Number(paymentAmount || 0);
+
+  const remainingAmount = selectedPlan
+    ? Math.max(
+        selectedPlan.amount -
+          (Number.isFinite(paymentNumber) ? paymentNumber : 0),
+        0,
+      )
+    : 0;
+
   const handlePlanChange = (plan: MembershipPlan) => {
     setSelectedPlanId(plan.id);
+  };
 
-    if (!paymentAmount || paymentAmount === '0') {
-      setPaymentAmount(String(plan.amount));
+  const setFullPayment = () => {
+    if (selectedPlan) {
+      setPaymentAmount(String(selectedPlan.amount));
     }
   };
 
@@ -160,21 +169,27 @@ export function AddMemberScreen() {
       return;
     }
 
-    if (dateOfBirth) {
-      const dob = parseDateInput(dateOfBirth);
+    if (!dateOfBirth.trim()) {
+      Alert.alert(
+        'Date of birth required',
+        "Please select the member's date of birth.",
+      );
+      return;
+    }
 
-      if (!dob) {
-        Alert.alert('Invalid date', 'Please select a valid date of birth.');
-        return;
-      }
+    const dob = parseDateInput(dateOfBirth.trim());
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+    if (!dob) {
+      Alert.alert('Invalid date', 'Please select a valid date of birth.');
+      return;
+    }
 
-      if (dob > today) {
-        Alert.alert('Invalid date', 'Date of birth cannot be in the future.');
-        return;
-      }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (dob > today) {
+      Alert.alert('Invalid date', 'Date of birth cannot be in the future.');
+      return;
     }
 
     if (!selectedPlan) {
@@ -217,10 +232,10 @@ export function AddMemberScreen() {
       setError(null);
 
       const member = await container.useCases.addMember.execute({
-        firstName,
-        lastName,
-        phone,
-        email,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
         dateOfBirth,
       });
 
@@ -241,11 +256,11 @@ export function AddMemberScreen() {
       }
 
       Alert.alert(
-        'Member Added',
+        'Member added',
         `${member.firstName} has been added successfully.`,
         [
           {
-            text: 'View Member',
+            text: 'View member',
             onPress: () =>
               navigation.replace('MemberDetails', {
                 memberId: member.id,
@@ -267,294 +282,430 @@ export function AddMemberScreen() {
 
   if (loadingPlans) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" />
-
-        <Text style={styles.loadingText}>Loading membership plans...</Text>
-      </View>
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.center}>
+          <ActivityIndicator size="small" />
+          <Text style={styles.loadingText}>Loading plans...</Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (error && plans.length === 0) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorTitle}>Unable to load plans</Text>
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.center}>
+          <View style={styles.stateIconDanger}>
+            <Text style={styles.stateIconText}>!</Text>
+          </View>
+          <Text style={styles.stateTitle}>Unable to load plans</Text>
+          <Text style={styles.stateText}>{error}</Text>
 
-        <Text style={styles.errorText}>{error}</Text>
-
-        <Pressable style={styles.retryButton} onPress={loadPlans}>
-          <Text style={styles.retryText}>Retry</Text>
-        </Pressable>
-      </View>
+          <Pressable
+            style={({ pressed }) => [
+              styles.stateButton,
+              pressed && styles.pressed,
+            ]}
+            onPress={loadPlans}
+          >
+            <Text style={styles.stateButtonText}>Retry</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
     );
   }
 
   if (plans.length === 0) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorTitle}>No membership plans</Text>
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.center}>
+          <View style={styles.stateIcon}>
+            <Text style={styles.stateIconText}>+</Text>
+          </View>
+          <Text style={styles.stateTitle}>No active plans</Text>
+          <Text style={styles.stateText}>
+            Create an active membership plan before adding a member.
+          </Text>
 
-        <Text style={styles.errorText}>
-          Create an active membership plan before adding a member.
-        </Text>
-
-        <Pressable
-          style={styles.retryButton}
-          onPress={() => navigation.navigate('Plans')}
-        >
-          <Text style={styles.retryText}>Manage Plans</Text>
-        </Pressable>
-      </View>
+          <Pressable
+            style={({ pressed }) => [
+              styles.stateButton,
+              pressed && styles.pressed,
+            ]}
+            onPress={() => navigation.navigate('Plans')}
+          >
+            <Text style={styles.stateButtonText}>Manage plans</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
+    <SafeAreaView style={styles.safe}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <SectionTitle title="Member Information" />
-
-        <Field
-          label="First Name *"
-          value={firstName}
-          onChangeText={setFirstName}
-          placeholder="Enter first name"
-        />
-
-        <Field
-          label="Last Name"
-          value={lastName}
-          onChangeText={setLastName}
-          placeholder="Enter last name"
-        />
-
-        <Field
-          label="Phone *"
-          value={phone}
-          onChangeText={setPhone}
-          placeholder="Enter phone number"
-          keyboardType="phone-pad"
-          maxLength={15}
-        />
-
-        <Field
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
-          placeholder="Enter email address"
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-
-        <View style={styles.field}>
-          <Text style={styles.label}>Date of Birth</Text>
-
-          <Pressable
-            style={styles.dateInput}
-            onPress={() => setShowDobPicker(true)}
-          >
-            <Text
-              style={[
-                styles.dateInputText,
-                !dateOfBirth && styles.dateInputPlaceholder,
-              ]}
-            >
-              {dateOfBirth || 'Select date of birth'}
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.header}>
+            <Text style={styles.eyebrow}>MEMBERS</Text>
+            <Text style={styles.title}>Add member</Text>
+            <Text style={styles.subtitle}>
+              Enter the member details and membership information.
             </Text>
-          </Pressable>
+          </View>
 
-          {showDobPicker && (
-            <DateTimePicker
-              value={
-                dateOfBirth
-                  ? parseDateInput(dateOfBirth) ?? new Date()
-                  : new Date()
-              }
-              mode="date"
-              display="calendar"
-              maximumDate={new Date()}
-              onChange={(event, selectedDate) => {
-                setShowDobPicker(false);
+          <Section
+            title="Personal details"
+            subtitle="Basic information for the member profile."
+          >
+            <View style={styles.row}>
+              <View style={styles.half}>
+                <Field
+                  label="First name"
+                  required
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  placeholder="First name"
+                  autoCapitalize="words"
+                />
+              </View>
 
-                if (event.type === 'dismissed' || !selectedDate) {
-                  return;
-                }
+              <View style={styles.half}>
+                <Field
+                  label="Last name"
+                  value={lastName}
+                  onChangeText={setLastName}
+                  placeholder="Last name"
+                  autoCapitalize="words"
+                />
+              </View>
+            </View>
 
-                setDateOfBirth(formatDateForInput(selectedDate));
-              }}
+            <Field
+              label="Phone"
+              required
+              value={phone}
+              onChangeText={setPhone}
+              placeholder="10-digit mobile number"
+              keyboardType="phone-pad"
+              maxLength={15}
             />
-          )}
-        </View>
 
-        <SectionTitle title="Membership" />
+            <Field
+              label="Email"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="name@example.com"
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
 
-        <Text style={styles.label}>Membership Plan *</Text>
+            <View style={styles.lastField}>
+              <FieldLabel label="Date of birth" required />
 
-        <View style={styles.planList}>
-          {plans.map(plan => {
-            const selected = plan.id === selectedPlanId;
-
-            return (
               <Pressable
-                key={plan.id}
-                style={[styles.planCard, selected && styles.planCardSelected]}
-                onPress={() => handlePlanChange(plan)}
+                onPress={() => setShowDobPicker(true)}
+                style={({ pressed }) => [
+                  styles.dateInput,
+                  pressed && styles.pressedSoft,
+                ]}
               >
-                <View style={styles.planInfo}>
-                  <Text
-                    style={[
-                      styles.planName,
-                      selected && styles.planNameSelected,
-                    ]}
-                  >
-                    {plan.name}
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.planDuration,
-                      selected && styles.planDurationSelected,
-                    ]}
-                  >
-                    {plan.durationMonths}{' '}
-                    {plan.durationMonths === 1 ? 'month' : 'months'}
-                  </Text>
-                </View>
-
                 <Text
                   style={[
-                    styles.planAmount,
-                    selected && styles.planAmountSelected,
+                    styles.dateText,
+                    !dateOfBirth && styles.placeholderText,
                   ]}
                 >
-                  ₹{plan.amount.toLocaleString('en-IN')}
+                  {dateOfBirth
+                    ? formatReadableDate(dateOfBirth)
+                    : 'Select date of birth'}
                 </Text>
+                <Text style={styles.dateChevron}>⌄</Text>
               </Pressable>
-            );
-          })}
-        </View>
 
-        <Field
-          label="Start Date *"
-          value={startDate}
-          onChangeText={setStartDate}
-          placeholder="YYYY-MM-DD"
-          keyboardType="numbers-and-punctuation"
-        />
+              {showDobPicker ? (
+                <DateTimePicker
+                  value={parseDateInput(dateOfBirth) ?? new Date(1995, 0, 1)}
+                  mode="date"
+                  display="calendar"
+                  maximumDate={new Date()}
+                  onChange={(event, selectedDate) => {
+                    setShowDobPicker(false);
 
-        {calculatedEndDate && (
-          <View style={styles.expiryBox}>
-            <Text style={styles.expiryLabel}>Membership Ends</Text>
+                    if (event.type === 'dismissed' || !selectedDate) {
+                      return;
+                    }
 
-            <Text style={styles.expiryDate}>{calculatedEndDate}</Text>
-          </View>
-        )}
+                    setDateOfBirth(formatDateForInput(selectedDate));
+                  }}
+                />
+              ) : null}
+            </View>
+          </Section>
 
-        {selectedPlan && (
-          <View style={styles.amountBox}>
-            <View style={styles.amountRow}>
-              <Text style={styles.amountLabel}>Membership Amount</Text>
+          <Section
+            title="Membership"
+            subtitle="Choose the plan and start date."
+          >
+            <FieldLabel label="Membership plan" required />
 
-              <Text style={styles.amountValue}>
-                ₹{selectedPlan.amount.toLocaleString('en-IN')}
+            <View style={styles.planList}>
+              {plans.map(plan => {
+                const selected = plan.id === selectedPlanId;
+
+                return (
+                  <Pressable
+                    key={plan.id}
+                    onPress={() => handlePlanChange(plan)}
+                    style={({ pressed }) => [
+                      styles.planCard,
+                      selected && styles.planCardSelected,
+                      pressed && styles.planCardPressed,
+                    ]}
+                  >
+                    <View
+                      style={[styles.radio, selected && styles.radioSelected]}
+                    >
+                      {selected ? <View style={styles.radioDot} /> : null}
+                    </View>
+
+                    <View style={styles.planInfo}>
+                      <Text
+                        style={[
+                          styles.planName,
+                          selected && styles.planNameSelected,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {plan.name}
+                      </Text>
+
+                      <Text
+                        style={[
+                          styles.planDuration,
+                          selected && styles.planDurationSelected,
+                        ]}
+                      >
+                        {plan.durationMonths}{' '}
+                        {plan.durationMonths === 1 ? 'month' : 'months'}
+                      </Text>
+                    </View>
+
+                    <Text
+                      style={[
+                        styles.planAmount,
+                        selected && styles.planAmountSelected,
+                      ]}
+                    >
+                      ₹{plan.amount.toLocaleString('en-IN')}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Field
+              label="Start date"
+              required
+              value={startDate}
+              onChangeText={setStartDate}
+              placeholder="YYYY-MM-DD"
+              keyboardType="numbers-and-punctuation"
+            />
+
+            {calculatedEndDate ? (
+              <View style={styles.endDateRow}>
+                <Text style={styles.endDateLabel}>Membership ends</Text>
+                <Text style={styles.endDateValue}>{calculatedEndDate}</Text>
+              </View>
+            ) : null}
+          </Section>
+
+          <Section
+            title="Initial payment"
+            subtitle="Record the amount collected today."
+          >
+            <View style={styles.paymentRow}>
+              <View style={styles.paymentField}>
+                <FieldLabel label="Payment amount" />
+
+                <View style={styles.amountInputWrap}>
+                  <Text style={styles.currency}>₹</Text>
+                  <TextInput
+                    value={paymentAmount}
+                    onChangeText={setPaymentAmount}
+                    placeholder="0"
+                    placeholderTextColor="#A0A8B5"
+                    keyboardType="decimal-pad"
+                    style={styles.amountInput}
+                    selectTextOnFocus
+                  />
+                </View>
+              </View>
+
+              <Pressable
+                onPress={setFullPayment}
+                style={({ pressed }) => [
+                  styles.fullPaymentButton,
+                  pressed && styles.pressedSoft,
+                ]}
+              >
+                <Text style={styles.fullPaymentText}>Full amount</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.balanceRow}>
+              <Text style={styles.balanceLabel}>
+                {remainingAmount > 0 ? 'Remaining due' : 'Fully paid'}
+              </Text>
+              <Text
+                style={[
+                  styles.balanceValue,
+                  remainingAmount > 0 ? styles.balanceDue : styles.balancePaid,
+                ]}
+              >
+                ₹{remainingAmount.toLocaleString('en-IN')}
               </Text>
             </View>
+
+            <FieldLabel label="Payment method" />
+
+            <View style={styles.paymentMethods}>
+              {PAYMENT_METHODS.map(method => {
+                const selected = paymentMethod === method.value;
+
+                return (
+                  <Pressable
+                    key={method.value}
+                    onPress={() => setPaymentMethod(method.value)}
+                    style={({ pressed }) => [
+                      styles.paymentMethod,
+                      selected && styles.paymentMethodSelected,
+                      pressed && styles.pressedSoft,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.paymentMethodText,
+                        selected && styles.paymentMethodTextSelected,
+                      ]}
+                    >
+                      {method.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+
+            <Text style={styles.paymentNote}>
+              Leave the amount at ₹0 when no payment is collected today.
+            </Text>
+          </Section>
+
+          <Text style={styles.requiredNote}>* Required</Text>
+        </ScrollView>
+
+        <View style={styles.footer}>
+          <View style={styles.footerCopy}>
+            <Text style={styles.footerLabel}>INITIAL PAYMENT</Text>
+            <Text style={styles.footerAmount}>
+              ₹
+              {Number.isFinite(paymentNumber)
+                ? paymentNumber.toLocaleString('en-IN')
+                : '0'}
+            </Text>
           </View>
-        )}
 
-        <SectionTitle title="Initial Payment" />
-
-        <Field
-          label="Payment Amount"
-          value={paymentAmount}
-          onChangeText={setPaymentAmount}
-          placeholder="0"
-          keyboardType="decimal-pad"
-        />
-
-        <Text style={styles.helper}>
-          Enter 0 if the member has not paid anything yet.
-        </Text>
-
-        <Text style={styles.label}>Payment Method</Text>
-
-        <View style={styles.paymentMethods}>
-          {PAYMENT_METHODS.map(method => {
-            const selected = paymentMethod === method.value;
-
-            return (
-              <Pressable
-                key={method.value}
-                style={[
-                  styles.paymentButton,
-                  selected && styles.paymentButtonSelected,
-                ]}
-                onPress={() => setPaymentMethod(method.value)}
-              >
-                <Text
-                  style={[
-                    styles.paymentButtonText,
-                    selected && styles.paymentButtonTextSelected,
-                  ]}
-                >
-                  {method.label}
-                </Text>
-              </Pressable>
-            );
-          })}
+          <Pressable
+            style={({ pressed }) => [
+              styles.saveButton,
+              saving && styles.saveButtonDisabled,
+              pressed && !saving && styles.saveButtonPressed,
+            ]}
+            disabled={saving}
+            onPress={handleSave}
+          >
+            {saving ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.saveButtonText}>Add member</Text>
+            )}
+          </Pressable>
         </View>
-
-        <Pressable
-          style={[styles.saveButton, saving && styles.saveButtonDisabled]}
-          disabled={saving}
-          onPress={handleSave}
-        >
-          {saving ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text style={styles.saveButtonText}>Add Member</Text>
-          )}
-        </Pressable>
-
-        <Text style={styles.requiredText}>* Required fields</Text>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
-interface FieldProps {
+function Section({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <Text style={styles.sectionSubtitle}>{subtitle}</Text>
+      </View>
+
+      <View style={styles.card}>{children}</View>
+    </View>
+  );
+}
+
+function FieldLabel({
+  label,
+  required = false,
+}: {
   label: string;
-  value: string;
-  onChangeText: (value: string) => void;
-  placeholder: string;
-  keyboardType?: any;
-  maxLength?: number;
-  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+  required?: boolean;
+}) {
+  return (
+    <Text style={styles.label}>
+      {label}
+      {required ? <Text style={styles.required}> *</Text> : null}
+    </Text>
+  );
 }
 
 function Field({
   label,
+  required,
   value,
   onChangeText,
   placeholder,
   keyboardType,
   maxLength,
   autoCapitalize,
-}: FieldProps) {
+}: {
+  label: string;
+  required?: boolean;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder: string;
+  keyboardType?: any;
+  maxLength?: number;
+  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+}) {
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
-
+      <FieldLabel label={label} required={required} />
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor="#9CA3AF"
+        placeholderTextColor="#A0A8B5"
         style={styles.input}
         keyboardType={keyboardType}
         maxLength={maxLength}
@@ -562,10 +713,6 @@ function Field({
       />
     </View>
   );
-}
-
-function SectionTitle({ title }: { title: string }) {
-  return <Text style={styles.sectionTitle}>{title}</Text>;
 }
 
 function formatDateForInput(date: Date): string {
@@ -602,268 +749,548 @@ function parseDateInput(value: string): Date | null {
 
 function formatDisplayDate(date: Date): string {
   const day = String(date.getDate()).padStart(2, '0');
-
   const month = String(date.getMonth() + 1).padStart(2, '0');
-
   const year = date.getFullYear();
 
   return `${day}-${month}-${year}`;
 }
 
+function formatReadableDate(value: string): string {
+  const date = parseDateInput(value);
+
+  if (!date) {
+    return value;
+  }
+
+  return date.toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
 const styles = StyleSheet.create({
-  container: {
+  safe: {
     flex: 1,
-    backgroundColor: '#F6F7F9',
+    backgroundColor: '#F5F6F8',
+  },
+
+  flex: {
+    flex: 1,
   },
 
   content: {
-    padding: 16,
-    paddingBottom: 40,
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 110,
   },
 
-  center: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-    backgroundColor: '#F6F7F9',
+  header: {
+    marginBottom: 24,
   },
 
-  loadingText: {
-    marginTop: 12,
-    color: '#6B7280',
+  eyebrow: {
+    fontSize: 9,
+    letterSpacing: 1.5,
+    color: '#7C3AED',
+    fontWeight: '900',
   },
 
-  errorTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#111827',
-    textAlign: 'center',
+  title: {
+    marginTop: 3,
+    fontSize: 29,
+    lineHeight: 34,
+    color: '#101828',
+    fontWeight: '900',
+    letterSpacing: -0.7,
   },
 
-  errorText: {
-    marginTop: 10,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 20,
+  subtitle: {
+    marginTop: 5,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#7A8492',
   },
 
-  retryButton: {
-    marginTop: 20,
-    paddingHorizontal: 22,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#111827',
+  section: {
+    marginBottom: 23,
   },
 
-  dateInput: {
-    height: 48,
-    paddingHorizontal: 14,
-    borderRadius: 11,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-  },
-
-  dateInputText: {
-    color: '#111827',
-    fontSize: 15,
-  },
-
-  dateInputPlaceholder: {
-    color: '#9CA3AF',
-  },
-
-  retryText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
+  sectionHeader: {
+    marginBottom: 10,
   },
 
   sectionTitle: {
-    marginTop: 12,
-    marginBottom: 14,
-    fontSize: 19,
-    fontWeight: '800',
+    fontSize: 17,
+    lineHeight: 22,
     color: '#111827',
+    fontWeight: '900',
+  },
+
+  sectionSubtitle: {
+    marginTop: 3,
+    fontSize: 11,
+    lineHeight: 16,
+    color: '#858F9D',
+  },
+
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E7EBF0',
+    borderRadius: 20,
+    padding: 15,
+  },
+
+  row: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+
+  half: {
+    flex: 1,
   },
 
   field: {
-    marginBottom: 14,
+    marginBottom: 15,
+  },
+
+  lastField: {
+    marginBottom: 0,
   },
 
   label: {
     marginBottom: 7,
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#374151',
+    fontSize: 11,
+    color: '#344054',
+    fontWeight: '800',
+  },
+
+  required: {
+    color: '#7C3AED',
   },
 
   input: {
     height: 48,
-    paddingHorizontal: 14,
-    borderRadius: 11,
-    backgroundColor: '#FFFFFF',
-    color: '#111827',
-    fontSize: 15,
-  },
-
-  planList: {
-    gap: 10,
-    marginBottom: 14,
-  },
-
-  planCard: {
-    minHeight: 70,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
     borderRadius: 13,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
+    borderColor: '#E0E5EB',
+    backgroundColor: '#FBFCFD',
+    color: '#17212F',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  dateInput: {
+    height: 48,
+    paddingHorizontal: 12,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: '#E0E5EB',
+    backgroundColor: '#FBFCFD',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
 
+  dateText: {
+    color: '#17212F',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  placeholderText: {
+    color: '#A0A8B5',
+  },
+
+  dateChevron: {
+    color: '#7B8694',
+    fontSize: 16,
+    fontWeight: '900',
+    marginTop: -4,
+  },
+
+  planList: {
+    gap: 9,
+    marginBottom: 15,
+  },
+
+  planCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 69,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: '#E4E8ED',
+    backgroundColor: '#FBFCFD',
+  },
+
   planCardSelected: {
-    borderColor: '#111827',
-    backgroundColor: '#111827',
+    borderColor: '#7C3AED',
+    backgroundColor: '#F8F5FF',
+  },
+
+  planCardPressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.992 }],
+  },
+
+  radio: {
+    width: 21,
+    height: 21,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: '#CBD2DC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 11,
+  },
+
+  radioSelected: {
+    borderColor: '#7C3AED',
+  },
+
+  radioDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: '#7C3AED',
   },
 
   planInfo: {
     flex: 1,
+    minWidth: 0,
   },
 
   planName: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#111827',
+    fontSize: 14,
+    color: '#182230',
+    fontWeight: '900',
   },
 
   planNameSelected: {
-    color: '#FFFFFF',
+    color: '#5B21B6',
   },
 
   planDuration: {
     marginTop: 3,
-    fontSize: 12,
-    color: '#6B7280',
+    fontSize: 10,
+    color: '#7C8796',
+    fontWeight: '700',
   },
 
   planDurationSelected: {
-    color: '#D1D5DB',
+    color: '#786C98',
   },
 
   planAmount: {
-    marginLeft: 10,
+    marginLeft: 8,
     fontSize: 16,
-    fontWeight: '800',
-    color: '#111827',
+    color: '#182230',
+    fontWeight: '900',
   },
 
   planAmountSelected: {
-    color: '#FFFFFF',
+    color: '#5B21B6',
   },
 
-  expiryBox: {
-    marginBottom: 14,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-  },
-
-  expiryLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-
-  expiryDate: {
-    marginTop: 4,
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#111827',
-  },
-
-  amountBox: {
-    marginBottom: 8,
-    padding: 14,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-  },
-
-  amountRow: {
+  endDateRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 11,
+    paddingVertical: 10,
+    borderRadius: 13,
+    backgroundColor: '#F4F0FF',
   },
 
-  amountLabel: {
-    color: '#6B7280',
-    fontSize: 14,
-  },
-
-  amountValue: {
-    fontSize: 17,
+  endDateLabel: {
+    fontSize: 10,
+    color: '#7D719A',
     fontWeight: '800',
-    color: '#111827',
   },
 
-  helper: {
-    marginTop: -6,
-    marginBottom: 16,
+  endDateValue: {
     fontSize: 12,
-    color: '#6B7280',
+    color: '#4C1D95',
+    fontWeight: '900',
+  },
+
+  paymentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    marginBottom: 11,
+  },
+
+  paymentField: {
+    flex: 1,
+    marginRight: 10,
+  },
+
+  amountInputWrap: {
+    height: 48,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: '#E0E5EB',
+    backgroundColor: '#FBFCFD',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+
+  currency: {
+    fontSize: 16,
+    fontWeight: '900',
+    color: '#667085',
+    marginRight: 4,
+  },
+
+  amountInput: {
+    flex: 1,
+    height: 46,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    fontSize: 18,
+    color: '#17212F',
+    fontWeight: '900',
+  },
+
+  fullPaymentButton: {
+    height: 48,
+    paddingHorizontal: 13,
+    borderRadius: 13,
+    backgroundColor: '#151A24',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  fullPaymentText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+
+  balanceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+    paddingHorizontal: 1,
+  },
+
+  balanceLabel: {
+    fontSize: 11,
+    color: '#7A8492',
+    fontWeight: '700',
+  },
+
+  balanceValue: {
+    fontSize: 13,
+    fontWeight: '900',
+  },
+
+  balanceDue: {
+    color: '#C62828',
+  },
+
+  balancePaid: {
+    color: '#15803D',
   },
 
   paymentMethods: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 20,
   },
 
-  paymentButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    borderRadius: 20,
-    backgroundColor: '#E5E7EB',
+  paymentMethod: {
+    minWidth: 60,
+    height: 38,
+    paddingHorizontal: 12,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: '#E0E5EB',
+    backgroundColor: '#FBFCFD',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
-  paymentButtonSelected: {
-    backgroundColor: '#111827',
+  paymentMethodSelected: {
+    backgroundColor: '#7C3AED',
+    borderColor: '#7C3AED',
   },
 
-  paymentButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#4B5563',
+  paymentMethodText: {
+    fontSize: 10,
+    color: '#667085',
+    fontWeight: '900',
   },
 
-  paymentButtonTextSelected: {
+  paymentMethodTextSelected: {
     color: '#FFFFFF',
   },
 
+  paymentNote: {
+    marginTop: 12,
+    fontSize: 10,
+    lineHeight: 15,
+    color: '#98A2B3',
+  },
+
+  requiredNote: {
+    marginTop: -3,
+    fontSize: 10,
+    textAlign: 'center',
+    color: '#98A2B3',
+  },
+
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === 'ios' ? 15 : 10,
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E4E8ED',
+    shadowColor: '#101828',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: -5 },
+    elevation: 12,
+  },
+
+  footerCopy: {
+    flex: 1,
+    marginRight: 10,
+  },
+
+  footerLabel: {
+    fontSize: 8,
+    letterSpacing: 1,
+    color: '#98A2B3',
+    fontWeight: '900',
+  },
+
+  footerAmount: {
+    marginTop: 2,
+    fontSize: 19,
+    color: '#101828',
+    fontWeight: '900',
+  },
+
   saveButton: {
-    height: 52,
-    borderRadius: 12,
+    minWidth: 142,
+    height: 49,
+    paddingHorizontal: 17,
+    borderRadius: 15,
+    backgroundColor: '#7C3AED',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#111827',
+    shadowColor: '#7C3AED',
+    shadowOpacity: 0.2,
+    shadowRadius: 11,
+    shadowOffset: { width: 0, height: 5 },
+    elevation: 4,
   },
 
   saveButtonDisabled: {
-    opacity: 0.6,
+    opacity: 0.58,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+
+  saveButtonPressed: {
+    transform: [{ scale: 0.985 }],
   },
 
   saveButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: '900',
   },
 
-  requiredText: {
-    marginTop: 12,
+  center: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 28,
+    backgroundColor: '#F5F6F8',
+  },
+
+  loadingText: {
+    marginTop: 11,
+    fontSize: 12,
+    color: '#7C8796',
+    fontWeight: '600',
+  },
+
+  stateIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: '#F0EBFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 15,
+  },
+
+  stateIconDanger: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    backgroundColor: '#FFF0F0',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 15,
+  },
+
+  stateIconText: {
+    color: '#6D28D9',
+    fontSize: 22,
+    fontWeight: '900',
+  },
+
+  stateTitle: {
+    fontSize: 19,
+    color: '#101828',
+    fontWeight: '900',
     textAlign: 'center',
-    fontSize: 11,
-    color: '#9CA3AF',
+  },
+
+  stateText: {
+    maxWidth: 300,
+    marginTop: 7,
+    fontSize: 12,
+    lineHeight: 18,
+    color: '#7C8796',
+    textAlign: 'center',
+  },
+
+  stateButton: {
+    height: 45,
+    marginTop: 18,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    backgroundColor: '#111827',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  stateButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '900',
+  },
+
+  pressed: {
+    opacity: 0.72,
+  },
+
+  pressedSoft: {
+    opacity: 0.76,
   },
 });

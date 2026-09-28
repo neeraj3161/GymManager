@@ -24,7 +24,13 @@ import {
 import { Member } from '../../../domain/entities/Member';
 import { container } from '../../../di/container';
 
-type MemberFilter = 'all' | 'active' | 'disabled' | 'feesDue' | 'expiringSoon';
+type MemberFilter =
+  | 'all'
+  | 'active'
+  | 'disabled'
+  | 'feesDue'
+  | 'paymentsReceived'
+  | 'expiringSoon';
 
 type MemberWithMembership = Member & {
   membershipEndDate?: string | null;
@@ -209,6 +215,24 @@ export function MembersScreen() {
         return;
       }
 
+      if (filter === 'paymentsReceived') {
+        const [allMembers, memberIdsWithPayments] = await Promise.all([
+          container.repositories.member.getAll(),
+          container.repositories.payment.getMemberIdsWithPayments(),
+        ]);
+        const paidMemberIds = new Set(memberIdsWithPayments);
+
+        setMembers(
+          allMembers
+            .filter(member => paidMemberIds.has(member.id))
+            .map(member => ({
+              ...member,
+              membershipEndDate: null,
+            })),
+        );
+        return;
+      }
+
       // All/active/disabled lists also retain membership expiry metadata
       // so expired memberships can display a red badge.
       const data = await container.repositories.member.getAll();
@@ -255,6 +279,7 @@ export function MembersScreen() {
       const matchesFilter =
         filter === 'all' ||
         filter === 'feesDue' ||
+        filter === 'paymentsReceived' ||
         filter === 'expiringSoon' ||
         member.status === filter;
 
@@ -318,6 +343,8 @@ export function MembersScreen() {
   const screenTitle =
     filter === 'feesDue'
       ? 'Fees Due'
+      : filter === 'paymentsReceived'
+      ? 'Payments Received'
       : filter === 'expiringSoon'
       ? 'Expiring Soon'
       : 'Members';
@@ -325,6 +352,8 @@ export function MembersScreen() {
   const screenSubtitle =
     filter === 'feesDue'
       ? `${members.length} members with outstanding fees`
+      : filter === 'paymentsReceived'
+      ? `${members.length} members with recorded payments`
       : filter === 'expiringSoon'
       ? `${members.length} memberships expiring within 7 days`
       : `${members.length} total · ${activeCount} active`;
@@ -352,6 +381,8 @@ export function MembersScreen() {
         placeholder={
           filter === 'feesDue'
             ? 'Search fee-due members'
+            : filter === 'paymentsReceived'
+            ? 'Search members with payments'
             : filter === 'expiringSoon'
             ? 'Search expiring members'
             : 'Search name, phone or member number'
