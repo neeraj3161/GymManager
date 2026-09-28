@@ -15,9 +15,6 @@ export type AppUpdateInfo = {
   update: UpdateManifest;
 };
 
-const UPDATE_MANIFEST_URL =
-  'https://gymmanager-update-server.onrender.com/update.json';
-
 const REQUEST_TIMEOUT_MS = 10_000;
 
 function isValidManifest(value: unknown): value is UpdateManifest {
@@ -44,7 +41,19 @@ function isValidManifest(value: unknown): value is UpdateManifest {
   );
 }
 
-async function fetchManifest(): Promise<UpdateManifest> {
+async function fetchManifest(manifestUrl: string): Promise<UpdateManifest> {
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(manifestUrl);
+  } catch {
+    throw new Error('Enter a valid update manifest URL.');
+  }
+
+  if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+    throw new Error('Update manifest URL must use HTTP or HTTPS.');
+  }
+
   const controller = new AbortController();
 
   const timeout = setTimeout(() => {
@@ -52,7 +61,7 @@ async function fetchManifest(): Promise<UpdateManifest> {
   }, REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(UPDATE_MANIFEST_URL, {
+    const response = await fetch(parsedUrl.toString(), {
       method: 'GET',
       headers: {
         Accept: 'application/json',
@@ -78,10 +87,10 @@ async function fetchManifest(): Promise<UpdateManifest> {
 }
 
 export const appUpdateService = {
-  async check(): Promise<AppUpdateInfo | null> {
+  async check(manifestUrl: string): Promise<AppUpdateInfo | null> {
     const current = await appUpdater.getVersion();
 
-    const manifest = await fetchManifest();
+    const manifest = await fetchManifest(manifestUrl.trim());
 
     if (manifest.versionCode <= current.versionCode) {
       return null;

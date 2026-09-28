@@ -25,10 +25,10 @@ address, such as `http://192.168.1.27:8080`.
 This repository includes a Render blueprint at the project root. In Render,
 choose **New > Blueprint**, connect this repository, and deploy
 `render.yaml`. It creates the `gymmanager-update-server` service with the
-`/health` health check and uses the public URL expected by the Android app:
+`/health` health check. The currently deployed public update URL is:
 
 ```text
-https://gymmanager-update-server.onrender.com/update.json
+https://gymmanager-buq7.onrender.com/update.json
 ```
 
 For another Node.js host, host this directory and set `PORT` if required:

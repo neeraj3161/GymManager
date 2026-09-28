@@ -23,6 +23,10 @@ import {
 } from '../../../services/appUpdateService';
 import { exportCollectionPdf } from '../../../infrastructure/reports/exportCollectionPdf';
 
+const UPDATE_MANIFEST_SETTING_KEY = 'update_manifest_url';
+const DEFAULT_UPDATE_MANIFEST_URL =
+  'https://gymmanager-buq7.onrender.com/update.json';
+
 export function SettingsScreen() {
   const navigation = useNavigation<any>();
   const logout = useAuthStore(state => state.logout);
@@ -41,6 +45,8 @@ export function SettingsScreen() {
   // App updater state
   const [checkingForUpdate, setCheckingForUpdate] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [updateManifestUrl, setUpdateManifestUrl] = useState('');
+  const [savingUpdateManifestUrl, setSavingUpdateManifestUrl] = useState(false);
 
   // ---------------------------------------------------------------------------
   // Collection settings
@@ -56,6 +62,21 @@ export function SettingsScreen() {
       Alert.alert(
         'Error',
         e instanceof Error ? e.message : 'Unable to load collection setting',
+      );
+    }
+  }, []);
+
+  const loadUpdateManifestUrl = useCallback(async () => {
+    try {
+      const value = await container.repositories.appSettings.getString(
+        UPDATE_MANIFEST_SETTING_KEY,
+        DEFAULT_UPDATE_MANIFEST_URL,
+      );
+      setUpdateManifestUrl(value);
+    } catch (error) {
+      Alert.alert(
+        'Error',
+        error instanceof Error ? error.message : 'Unable to load update URL.',
       );
     }
   }, []);
@@ -153,7 +174,8 @@ export function SettingsScreen() {
     useCallback(() => {
       loadGymProfile();
       loadCollectionSetting();
-    }, [loadGymProfile, loadCollectionSetting]),
+      loadUpdateManifestUrl();
+    }, [loadGymProfile, loadCollectionSetting, loadUpdateManifestUrl]),
   );
 
   const saveGymProfile = async () => {
@@ -190,6 +212,45 @@ export function SettingsScreen() {
   // App updater
   // ---------------------------------------------------------------------------
 
+  const saveUpdateManifestUrl = async () => {
+    const value = updateManifestUrl.trim();
+
+    if (!value) {
+      Alert.alert('Invalid URL', 'Enter the update manifest URL.');
+      return;
+    }
+
+    try {
+      const parsedUrl = new URL(value);
+      if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+        throw new Error('Use an HTTP or HTTPS URL.');
+      }
+    } catch (error) {
+      Alert.alert(
+        'Invalid URL',
+        error instanceof Error ? error.message : 'Enter a valid URL.',
+      );
+      return;
+    }
+
+    try {
+      setSavingUpdateManifestUrl(true);
+      await container.repositories.appSettings.setString(
+        UPDATE_MANIFEST_SETTING_KEY,
+        value,
+      );
+      setUpdateManifestUrl(value);
+      Alert.alert('Saved', 'Update manifest URL saved.');
+    } catch (error) {
+      Alert.alert(
+        'Save failed',
+        error instanceof Error ? error.message : 'Unable to save update URL.',
+      );
+    } finally {
+      setSavingUpdateManifestUrl(false);
+    }
+  };
+
   const handleCheckForUpdates = async () => {
     if (checkingForUpdate) {
       return;
@@ -198,7 +259,12 @@ export function SettingsScreen() {
     try {
       setCheckingForUpdate(true);
 
-      const result = await appUpdateService.check();
+      const savedManifestUrl =
+        await container.repositories.appSettings.getString(
+          UPDATE_MANIFEST_SETTING_KEY,
+          DEFAULT_UPDATE_MANIFEST_URL,
+        );
+      const result = await appUpdateService.check(savedManifestUrl);
 
       if (!result) {
         Alert.alert(
@@ -420,6 +486,32 @@ export function SettingsScreen() {
         {/* ---------------------------------------------------------------- */}
 
         <Text style={styles.group}>Application</Text>
+
+        <View style={styles.updateUrlSection}>
+          <Text style={styles.inputLabel}>Update Manifest URL</Text>
+          <TextInput
+            style={styles.input}
+            value={updateManifestUrl}
+            onChangeText={setUpdateManifestUrl}
+            placeholder="https://example.com/update.json"
+            placeholderTextColor="#9CA3AF"
+            keyboardType="url"
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Pressable
+            style={[
+              styles.saveButton,
+              savingUpdateManifestUrl && styles.saveButtonDisabled,
+            ]}
+            onPress={saveUpdateManifestUrl}
+            disabled={savingUpdateManifestUrl}
+          >
+            <Text style={styles.saveButtonText}>
+              {savingUpdateManifestUrl ? 'Saving...' : 'Save Update URL'}
+            </Text>
+          </Pressable>
+        </View>
 
         <SettingRow
           title="Check for updates"
@@ -746,6 +838,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     padding: 16,
+    marginBottom: 8,
+  },
+
+  updateUrlSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 15,
     marginBottom: 8,
   },
 
