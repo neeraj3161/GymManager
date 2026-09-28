@@ -76,3 +76,4 @@ yarn-error.log
 
 *.apk
 !update-server/apk/*.apk
+APP_UPDATER_GUIDE.md

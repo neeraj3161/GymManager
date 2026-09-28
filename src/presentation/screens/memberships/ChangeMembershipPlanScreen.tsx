@@ -90,6 +90,7 @@ export function ChangeMembershipPlanScreen() {
           due.remainingAmount > 0 ? String(due.remainingAmount) : '',
         );
       } else {
+        setStartDateOption('today');
         setPreviousDue(0);
         setCollectAmount('');
       }
@@ -174,8 +175,39 @@ export function ChangeMembershipPlanScreen() {
 
     if (!currentMembership) {
       Alert.alert(
-        'No membership',
-        'This member does not have an active membership.',
+        'Create membership',
+        `Assign the ${selectedPlan.name} plan to ${memberName}?\n\n` +
+          `Plan amount: ₹${selectedPlan.amount.toLocaleString('en-IN')}`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Create',
+            onPress: async () => {
+              try {
+                setChanging(true);
+                await container.useCases.createMembership.execute({
+                  memberId,
+                  planId: selectedPlan.id,
+                  startDate: new Date().toISOString(),
+                });
+                Alert.alert(
+                  'Membership created',
+                  `${selectedPlan.name} has been assigned to ${memberName}.`,
+                  [{ text: 'Done', onPress: () => navigation.goBack() }],
+                );
+              } catch (error) {
+                Alert.alert(
+                  'Unable to create membership',
+                  error instanceof Error
+                    ? error.message
+                    : 'Something went wrong.',
+                );
+              } finally {
+                setChanging(false);
+              }
+            },
+          },
+        ],
       );
       return;
     }
@@ -275,32 +307,11 @@ export function ChangeMembershipPlanScreen() {
     );
   }
 
-  if (!currentMembership) {
-    return (
-      <SafeAreaView style={styles.safe}>
-        <View style={styles.empty}>
-          <View style={styles.emptyIcon}>
-            <Text style={styles.emptyIconText}>!</Text>
-          </View>
-          <Text style={styles.emptyTitle}>No membership found</Text>
-          <Text style={styles.emptyText}>
-            This member does not have a membership that can be changed.
-          </Text>
-          <Pressable
-            style={styles.secondaryButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Text style={styles.secondaryButtonText}>Go back</Text>
-          </Pressable>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  const currentPlanLabel =
-    currentMembership.amount > 0
+  const currentPlanLabel = currentMembership
+    ? currentMembership.amount > 0
       ? `₹${currentMembership.amount.toLocaleString('en-IN')}`
-      : 'No amount';
+      : 'No amount'
+    : 'No plan assigned';
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -327,7 +338,9 @@ export function ChangeMembershipPlanScreen() {
 
             <View style={styles.topBarCopy}>
               <Text style={styles.eyebrow}>MEMBERSHIP</Text>
-              <Text style={styles.screenTitle}>Change plan</Text>
+              <Text style={styles.screenTitle}>
+                {currentMembership ? 'Change plan' : 'Assign plan'}
+              </Text>
             </View>
           </View>
 
@@ -343,71 +356,87 @@ export function ChangeMembershipPlanScreen() {
                 {memberName}
               </Text>
               <Text style={styles.memberMeta}>
-                Current membership · {currentPlanLabel}
+                {currentMembership
+                  ? `Current membership · ${currentPlanLabel}`
+                  : currentPlanLabel}
               </Text>
             </View>
 
-            <View style={styles.statusPill}>
-              <View style={styles.statusDot} />
-              <Text style={styles.statusText}>
-                {isExpired(currentMembership.endDate) ? 'Expired' : 'Active'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionKicker}>01</Text>
-            <View style={styles.sectionCopy}>
-              <Text style={styles.sectionTitle}>Current membership</Text>
-              <Text style={styles.sectionSubtitle}>
-                Review what will carry over before selecting a new plan.
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.currentCard}>
-            <View style={styles.currentTopRow}>
-              <View>
-                <Text style={styles.mutedLabel}>CURRENT VALUE</Text>
-                <Text style={styles.currentAmount}>
-                  ₹{currentMembership.amount.toLocaleString('en-IN')}
+            {currentMembership ? (
+              <View style={styles.statusPill}>
+                <View style={styles.statusDot} />
+                <Text style={styles.statusText}>
+                  {isExpired(currentMembership.endDate) ? 'Expired' : 'Active'}
                 </Text>
               </View>
+            ) : null}
+          </View>
 
-              <View style={styles.validUntil}>
-                <Text style={styles.mutedLabel}>VALID UNTIL</Text>
-                <Text style={styles.validDate}>
-                  {formatDate(currentMembership.endDate)}
-                </Text>
-              </View>
-            </View>
-
-            {unusedDays > 0 ? (
-              <View style={styles.creditBanner}>
-                <View style={styles.creditIcon}>
-                  <Text style={styles.creditIconText}>↗</Text>
-                </View>
-                <View style={styles.creditCopy}>
-                  <Text style={styles.creditTitle}>
-                    Unused membership credit
-                  </Text>
-                  <Text style={styles.creditSubtitle}>
-                    {unusedDays} day{unusedDays > 1 ? 's' : ''} remaining
+          {currentMembership ? (
+            <>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionKicker}>01</Text>
+                <View style={styles.sectionCopy}>
+                  <Text style={styles.sectionTitle}>Current membership</Text>
+                  <Text style={styles.sectionSubtitle}>
+                    Review what will carry over before selecting a new plan.
                   </Text>
                 </View>
-                <Text style={styles.creditAmount}>
-                  ₹{unusedCredit.toLocaleString('en-IN')}
-                </Text>
               </View>
-            ) : (
-              <View style={styles.noCreditRow}>
-                <Text style={styles.noCreditDot}>•</Text>
-                <Text style={styles.noCreditText}>
-                  No unused membership credit available
-                </Text>
+
+              <View style={styles.currentCard}>
+                <View style={styles.currentTopRow}>
+                  <View>
+                    <Text style={styles.mutedLabel}>CURRENT VALUE</Text>
+                    <Text style={styles.currentAmount}>
+                      ₹{currentMembership.amount.toLocaleString('en-IN')}
+                    </Text>
+                  </View>
+
+                  <View style={styles.validUntil}>
+                    <Text style={styles.mutedLabel}>VALID UNTIL</Text>
+                    <Text style={styles.validDate}>
+                      {formatDate(currentMembership.endDate)}
+                    </Text>
+                  </View>
+                </View>
+
+                {unusedDays > 0 ? (
+                  <View style={styles.creditBanner}>
+                    <View style={styles.creditIcon}>
+                      <Text style={styles.creditIconText}>↗</Text>
+                    </View>
+                    <View style={styles.creditCopy}>
+                      <Text style={styles.creditTitle}>
+                        Unused membership credit
+                      </Text>
+                      <Text style={styles.creditSubtitle}>
+                        {unusedDays} day{unusedDays > 1 ? 's' : ''} remaining
+                      </Text>
+                    </View>
+                    <Text style={styles.creditAmount}>
+                      ₹{unusedCredit.toLocaleString('en-IN')}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.noCreditRow}>
+                    <Text style={styles.noCreditDot}>•</Text>
+                    <Text style={styles.noCreditText}>
+                      No unused membership credit available
+                    </Text>
+                  </View>
+                )}
               </View>
-            )}
-          </View>
+            </>
+          ) : (
+            <View style={styles.noPlans}>
+              <Text style={styles.noPlansTitle}>No membership assigned</Text>
+              <Text style={styles.noPlansText}>
+                Choose an active plan below to create this member's first
+                membership.
+              </Text>
+            </View>
+          )}
 
           {previousDue > 0 ? (
             <>
@@ -449,17 +478,25 @@ export function ChangeMembershipPlanScreen() {
             <View style={styles.sectionCopy}>
               <Text style={styles.sectionTitle}>Start date</Text>
               <Text style={styles.sectionSubtitle}>
-                Choose when the new membership should begin.
+                {currentMembership
+                  ? 'Choose when the new membership should begin.'
+                  : 'The new membership will begin today.'}
               </Text>
             </View>
           </View>
 
           <View style={styles.componentCard}>
-            <MembershipStartDateSection
-              previousEndDate={currentMembership.endDate}
-              selected={startDateOption}
-              onChange={setStartDateOption}
-            />
+            {currentMembership ? (
+              <MembershipStartDateSection
+                previousEndDate={currentMembership.endDate}
+                selected={startDateOption}
+                onChange={setStartDateOption}
+              />
+            ) : (
+              <Text style={styles.sectionSubtitle}>
+                The new membership will start today.
+              </Text>
+            )}
           </View>
 
           <View style={styles.sectionHeader}>
@@ -469,7 +506,9 @@ export function ChangeMembershipPlanScreen() {
             <View style={styles.sectionCopy}>
               <Text style={styles.sectionTitle}>Choose a new plan</Text>
               <Text style={styles.sectionSubtitle}>
-                Select the membership you want to move this member to.
+                {currentMembership
+                  ? 'Select the membership you want to move this member to.'
+                  : 'Select a plan for this member’s first membership.'}
               </Text>
             </View>
           </View>
@@ -479,9 +518,15 @@ export function ChangeMembershipPlanScreen() {
               <View style={styles.noPlans}>
                 <Text style={styles.noPlansTitle}>No active plans</Text>
                 <Text style={styles.noPlansText}>
-                  Create an active membership plan before changing this
-                  membership.
+                  Create an active membership plan before assigning a membership
+                  to this member.
                 </Text>
+                <Pressable
+                  style={styles.secondaryButton}
+                  onPress={() => navigation.navigate('Plans')}
+                >
+                  <Text style={styles.secondaryButtonText}>Create a plan</Text>
+                </Pressable>
               </View>
             ) : null}
 
@@ -559,6 +604,15 @@ export function ChangeMembershipPlanScreen() {
                 </Pressable>
               );
             })}
+
+            {plans.length > 0 ? (
+              <Pressable
+                style={[styles.secondaryButton, styles.addPlanButton]}
+                onPress={() => navigation.navigate('Plans')}
+              >
+                <Text style={styles.secondaryButtonText}>Add another plan</Text>
+              </Pressable>
+            ) : null}
           </View>
 
           {selectedPlan ? (
@@ -637,7 +691,11 @@ export function ChangeMembershipPlanScreen() {
         <View style={styles.ctaBar}>
           <View style={styles.ctaCopy}>
             <Text style={styles.ctaLabel}>
-              {selectedPlan ? 'AMOUNT TO PAY' : 'SELECT A PLAN'}
+              {selectedPlan
+                ? currentMembership
+                  ? 'AMOUNT TO PAY'
+                  : 'PLAN AMOUNT'
+                : 'SELECT A PLAN'}
             </Text>
             <Text style={styles.ctaAmount}>
               {selectedPlan ? `₹${finalAmount.toLocaleString('en-IN')}` : '—'}
@@ -660,7 +718,9 @@ export function ChangeMembershipPlanScreen() {
               <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
               <>
-                <Text style={styles.confirmText}>Confirm change</Text>
+                <Text style={styles.confirmText}>
+                  {currentMembership ? 'Confirm change' : 'Create membership'}
+                </Text>
                 <Text style={styles.confirmArrow}>→</Text>
               </>
             )}
@@ -1366,6 +1426,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E2E7EE',
+  },
+
+  addPlanButton: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
   },
 
   secondaryButtonText: {

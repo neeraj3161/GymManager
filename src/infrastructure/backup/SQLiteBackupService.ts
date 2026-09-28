@@ -2,6 +2,7 @@ import RNFS from 'react-native-fs';
 import {
   BackupFile,
   BackupService,
+  RestoreMode,
 } from '../../application/backup/BackupService';
 import { SQLiteDatabase } from '../database/SQLiteDatabase';
 
@@ -134,13 +135,23 @@ export class SQLiteBackupService implements BackupService {
     return { path, createdAt: new Date().toISOString(), size: content.length };
   }
 
-  async restoreBackup(path: string): Promise<void> {
+  async restoreBackup(path: string): Promise<RestoreMode> {
     const filePath = path.replace(/^file:\/\//, '');
     const content = await RNFS.readFile(filePath, 'utf8');
-    const statements = splitSqlStatements(
+    const rawStatements = splitSqlStatements(
       content.replace(/^\s*--.*$/gm, ''),
-    ).filter(statement => {
-      const normalized = statement.replace(/\s+/g, ' ').trim().toUpperCase();
+    );
+    const normalizedStatements = rawStatements.map(statement =>
+      statement.replace(/\s+/g, ' ').trim().toUpperCase(),
+    );
+    const hasTransactionStart = normalizedStatements.some(
+      statement => statement === 'BEGIN' || statement === 'BEGIN TRANSACTION',
+    );
+    const hasTransactionEnd = normalizedStatements.some(
+      statement => statement === 'COMMIT' || statement === 'END',
+    );
+    const commands = rawStatements.filter((_, index) => {
+      const normalized = normalizedStatements[index];
       return (
         normalized !== 'BEGIN TRANSACTION' &&
         normalized !== 'BEGIN' &&
@@ -149,19 +160,31 @@ export class SQLiteBackupService implements BackupService {
         !/^PRAGMA\s+FOREIGN_KEYS\s*=/.test(normalized)
       );
     });
+    const isFullBackup =
+      /PRAGMA\s+foreign_keys\s*=/i.test(content) &&
+      hasTransactionStart &&
+      hasTransactionEnd;
+    const isMembersOnlyImport =
+      hasTransactionStart &&
+      hasTransactionEnd &&
+      commands.length === 1 &&
+      /^\s*INSERT\s+OR\s+IGNORE\s+INTO\s+members\s*\(/i.test(commands[0]);
 
-    if (
-      !content.includes('PRAGMA foreign_keys') ||
-      !content.includes('BEGIN TRANSACTION') ||
-      !content.includes('COMMIT')
-    ) {
-      throw new Error('Invalid GymManager SQL backup file.');
+    if (!isFullBackup && !isMembersOnlyImport) {
+      throw new Error(
+        'Unsupported SQL file. Select a GymManager full backup or a members-only SQL import.',
+      );
     }
 
+    if (isMembersOnlyImport) {
+      await this.database.ensureMemberPhoneNormalizedColumn();
+    }
+
+    const statements = commands.map(query => ({ query }));
     await this.database.execute('PRAGMA foreign_keys = OFF');
 
     try {
-      await this.database.executeBatch(statements.map(query => ({ query })));
+      await this.database.executeBatch(statements);
 
       const violations = await this.database.query<ForeignKeyViolationRow>(
         'PRAGMA foreign_key_check',
@@ -177,5 +200,7 @@ export class SQLiteBackupService implements BackupService {
     } finally {
       await this.database.execute('PRAGMA foreign_keys = ON');
     }
+
+    return isMembersOnlyImport ? 'members' : 'full';
   }
 }

@@ -38,7 +38,7 @@ export function DashboardScreen() {
 
   useEffect(() => {
     navigation.setOptions({
-      title: gymName ? `${gymName} Gym Manager` : 'Gym Manager',
+      title: gymName ? `${gymName} Manager` : 'Manager',
     });
   }, [gymName, navigation]);
 
@@ -178,7 +178,7 @@ export function DashboardScreen() {
       <View style={styles.header}>
         <View style={styles.headerCopy}>
           <Text style={styles.eyebrow}>
-            {gymName ? `${gymName.toUpperCase()} GYM MANAGER` : 'GYM MANAGER'}
+            {gymName ? `${gymName.toUpperCase()}  MANAGER` : 'GYM MANAGER'}
           </Text>
           <Text style={styles.title}>Dashboard</Text>
           <Text style={styles.subtitle}>

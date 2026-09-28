@@ -1,15 +1,13 @@
-import {BackupService} from './BackupService';
+import { BackupService, RestoreMode } from './BackupService';
 
 export class RestoreDatabaseUseCase {
-  constructor(
-    private readonly backupService: BackupService,
-  ) {}
+  constructor(private readonly backupService: BackupService) {}
 
-  async execute(path: string): Promise<void> {
+  async execute(path: string): Promise<RestoreMode> {
     if (!path.trim()) {
       throw new Error('Backup file is required');
     }
 
-    await this.backupService.restoreBackup(path);
+    return this.backupService.restoreBackup(path);
   }
 }

@@ -19,6 +19,7 @@ import { container } from '../../../di/container';
 import { MembershipPlan } from '../../../domain/entities/MembershipPlan';
 import { PaymentMethod } from '../../../domain/entities/Payment';
 import { useAuthStore } from '../../../store/authStore';
+import { calculateAge } from '../../../shared/utils/age';
 
 type PaymentOption = PaymentMethod;
 
@@ -445,6 +446,12 @@ export function AddMemberScreen() {
                     setDateOfBirth(formatDateForInput(selectedDate));
                   }}
                 />
+              ) : null}
+
+              {calculateAge(dateOfBirth) !== null ? (
+                <Text style={styles.ageText}>
+                  Age: {calculateAge(dateOfBirth)} years
+                </Text>
               ) : null}
             </View>
           </Section>
@@ -898,6 +905,13 @@ const styles = StyleSheet.create({
     color: '#17212F',
     fontSize: 13,
     fontWeight: '600',
+  },
+
+  ageText: {
+    marginTop: 7,
+    color: '#475467',
+    fontSize: 12,
+    fontWeight: '700',
   },
 
   placeholderText: {

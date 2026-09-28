@@ -4,7 +4,9 @@ export interface BackupFile {
   size: number;
 }
 
+export type RestoreMode = 'full' | 'members';
+
 export interface BackupService {
   createBackup(): Promise<BackupFile>;
-  restoreBackup(path: string): Promise<void>;
+  restoreBackup(path: string): Promise<RestoreMode>;
 }

@@ -567,6 +567,12 @@ export class SQLiteDatabase implements Database {
       })),
     );
 
+    await this.ensureMemberPhoneNormalizedColumn();
+  }
+
+  async ensureMemberPhoneNormalizedColumn(): Promise<void> {
+    await this.initialize();
+
     const memberColumns = await db.executeAsync(`PRAGMA table_info(members)`);
 
     const columns = memberColumns.rows._array as Array<{

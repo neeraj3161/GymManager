@@ -26,6 +26,7 @@ import { Payment } from '../../../domain/entities/Payment';
 import { MemberFeeStatus } from '../../../application/payments/GetMemberFeeStatus';
 import { UpdateMemberUseCase } from '../../../application/members/UpdateMember';
 import { container } from '../../../di/container';
+import { calculateAge } from '../../../shared/utils/age';
 
 export function MemberDetailsScreen() {
   const navigation = useNavigation<any>();
@@ -270,9 +271,22 @@ export function MemberDetailsScreen() {
   };
 
   const enable = async () => {
+    if (!member) {
+      return;
+    }
+
     try {
       await container.useCases.enableMember.execute(memberId);
+      const existingMembership =
+        await container.repositories.membership.getByMemberId(memberId);
       await load();
+
+      if (!existingMembership) {
+        navigation.navigate('ChangeMembershipPlan', {
+          memberId,
+          memberName: `${member.firstName} ${member.lastName ?? ''}`.trim(),
+        });
+      }
     } catch (err) {
       Alert.alert(
         'Unable to enable',
@@ -433,6 +447,12 @@ export function MemberDetailsScreen() {
                 />
               ) : null}
 
+              {calculateAge(editDateOfBirth) !== null ? (
+                <Text style={styles.agePreview}>
+                  Age: {calculateAge(editDateOfBirth)} years
+                </Text>
+              ) : null}
+
               <TextInputField
                 label="Gender"
                 value={editGender}
@@ -565,6 +585,15 @@ export function MemberDetailsScreen() {
             <Row
               label="Date of birth"
               value={member.dateOfBirth ? formatDate(member.dateOfBirth) : '-'}
+            />
+
+            <Row
+              label="Age"
+              value={
+                calculateAge(member.dateOfBirth) !== null
+                  ? `${calculateAge(member.dateOfBirth)} years`
+                  : '-'
+              }
               last
             />
           </Section>
@@ -1045,6 +1074,13 @@ const styles = StyleSheet.create({
   dateFieldText: {
     color: '#111827',
     fontSize: 15,
+  },
+
+  agePreview: {
+    marginTop: 7,
+    color: '#4B5563',
+    fontSize: 13,
+    fontWeight: '700',
   },
 
   placeholderText: {

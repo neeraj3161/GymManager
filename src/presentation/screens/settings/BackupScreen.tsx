@@ -56,7 +56,9 @@ export function BackupScreen() {
       });
 
       if (!selection.name?.toLowerCase().endsWith('.sql')) {
-        throw new Error('Please select a .sql GymManager backup file.');
+        throw new Error(
+          'Please select a .sql GymManager backup or members-only import file.',
+        );
       }
 
       const [localCopy] = await keepLocalCopy({
@@ -74,20 +76,25 @@ export function BackupScreen() {
       setBusy(false);
 
       Alert.alert(
-        'Restore database',
-        'This replaces all current gym data with the selected SQL backup.',
+        'Import SQL file',
+        'A full GymManager backup replaces all local data. A members-only SQL file adds member records without replacing other gym data.',
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Restore',
-            style: 'destructive',
+            text: 'Continue',
             onPress: async () => {
               try {
                 setBusy(true);
-                await container.useCases.restoreDatabase.execute(path);
+                const mode = await container.useCases.restoreDatabase.execute(
+                  path,
+                );
                 Alert.alert(
-                  'Restore complete',
-                  'Restart GymManager to reload the restored database.',
+                  mode === 'members'
+                    ? 'Member import complete'
+                    : 'Restore complete',
+                  mode === 'members'
+                    ? 'Member records were imported. Existing matching records were left unchanged.'
+                    : 'Restart GymManager to reload the restored database.',
                 );
               } catch (error) {
                 Alert.alert(
@@ -141,8 +148,8 @@ export function BackupScreen() {
         </Pressable>
 
         <Text style={styles.note}>
-          Restore replaces the complete local database. Only use a GymManager
-          .sql backup.
+          GymManager backups replace the complete local database. Members-only
+          SQL imports add member records without replacing other data.
         </Text>
       </View>
     </SafeAreaView>
