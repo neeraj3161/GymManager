@@ -1,8 +1,8 @@
 {
-  "versionCode": 6,
-  "versionName": "1.0.5",
-  "apkUrl": "https://gymmanager-buq7.onrender.com/apk/gymmanager-1.0.5.apk",
-  "fileName": "gymmanager-1.0.5.apk",
+  "versionCode": 7,
+  "versionName": "1.0.6",
+  "apkUrl": "https://gymmanager-buq7.onrender.com/apk/gymmanager-1.0.6.apk",
+  "fileName": "gymmanager-1.0.6.apk",
   "mandatory": false,
-  "releaseNotes": "Improved member management, membership payments and renewals, reminders, and Android layout handling."
+  "releaseNotes": "Updated change and renew membership flow to allow applying unused credit. Fixed issue with payment method selection in change membership plan screen."
 }
