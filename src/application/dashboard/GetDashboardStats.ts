@@ -75,9 +75,21 @@ export class GetDashboardStatsUseCase {
             SELECT current_membership.id
             FROM memberships current_membership
             WHERE current_membership.member_id = m.member_id
-              AND date(current_membership.start_date) <= date('now', 'localtime')
             ORDER BY
-              CASE WHEN current_membership.status = 'active' THEN 0 ELSE 1 END,
+              CASE
+                WHEN current_membership.status = 'active'
+                  AND date(current_membership.start_date) <= date('now', 'localtime')
+                  AND date(current_membership.end_date) >= date('now', 'localtime') THEN 0
+                WHEN current_membership.status = 'active'
+                  AND date(current_membership.start_date) > date('now', 'localtime') THEN 1
+                WHEN current_membership.status = 'active' THEN 2
+                ELSE 3
+              END,
+              CASE
+                WHEN current_membership.status = 'active'
+                  AND date(current_membership.start_date) > date('now', 'localtime')
+                THEN date(current_membership.start_date)
+              END ASC,
               date(current_membership.start_date) DESC,
               datetime(current_membership.created_at) DESC
             LIMIT 1

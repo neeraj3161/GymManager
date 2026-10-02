@@ -16,6 +16,15 @@ export function addMonths(date: Date, months: number): Date {
   return result;
 }
 
+export function calculateMembershipEndDate(
+  startDate: Date,
+  durationMonths: number,
+): Date {
+  const endDate = addMonths(startDate, durationMonths);
+  endDate.setDate(endDate.getDate() - 1);
+  return endDate;
+}
+
 export function parseDateOnly(value: string): Date | null {
   const match = /^\d{4}-\d{2}-\d{2}$/.exec(value.trim());
 

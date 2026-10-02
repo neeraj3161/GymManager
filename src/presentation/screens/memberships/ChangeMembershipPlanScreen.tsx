@@ -22,6 +22,7 @@ import { MembershipPlan } from '../../../domain/entities/MembershipPlan';
 import { Membership } from '../../../domain/entities/Membership';
 import { container } from '../../../di/container';
 import { PreviousDueSection } from '../../components/PreviousDueSection';
+import { UnusedCreditToggle } from '../../components/UnusedCreditToggle';
 import {
   MembershipStartDateOption,
   MembershipStartDateSection,
@@ -30,10 +31,11 @@ import type { PreviousDueAction } from '../../components/PreviousDueSection';
 import { PaymentMethod } from '../../../domain/entities/Payment';
 import { useAuthStore } from '../../../store/authStore';
 import {
+  calculateMembershipPaymentSummary,
   getMaxCollectableAmount,
-  getRemainingDue,
   validateCollectionAmount,
 } from '../../../application/memberships/collectionValidation';
+import { formatDateOnly, parseDateOnly } from '../../../shared/utils/date';
 
 type RouteParams = {
   memberId: string;
@@ -51,6 +53,9 @@ export function ChangeMembershipPlanScreen() {
   );
   const [startDateOption, setStartDateOption] =
     useState<MembershipStartDateOption>('today');
+  const [customStartDate, setCustomStartDate] = useState(
+    formatDateForInput(new Date()),
+  );
 
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
@@ -58,6 +63,7 @@ export function ChangeMembershipPlanScreen() {
 
   const [unusedDays, setUnusedDays] = useState(0);
   const [unusedCredit, setUnusedCredit] = useState(0);
+  const [applyUnusedCredit, setApplyUnusedCredit] = useState(false);
 
   const [loading, setLoading] = useState(true);
   const [changing, setChanging] = useState(false);
@@ -67,10 +73,13 @@ export function ChangeMembershipPlanScreen() {
   const [previousDue, setPreviousDue] = useState(0);
 
   const [previousDueAction, setPreviousDueAction] =
-    useState<PreviousDueAction>('collect');
+    useState<PreviousDueAction>('carry_forward');
 
   const [collectAmount, setCollectAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [amountTaken, setAmountTaken] = useState('0');
+  const [amountTakenMethod, setAmountTakenMethod] =
+    useState<PaymentMethod>('cash');
   const [writeOffReason, setWriteOffReason] = useState('');
 
   const load = useCallback(async () => {
@@ -130,19 +139,32 @@ export function ChangeMembershipPlanScreen() {
       return;
     }
 
-    const result =
-      previousDue > 0
-        ? { unusedDays: 0, unusedCredit: 0 }
-        : calculateUnusedCredit(currentMembership);
+    const dueWillBeSettled =
+      previousDue <= 0 ||
+      previousDueAction === 'write_off' ||
+      (previousDueAction === 'collect' && Number(collectAmount) >= previousDue);
+    const result = dueWillBeSettled
+      ? calculateUnusedCredit(currentMembership)
+      : { unusedDays: 0, unusedCredit: 0 };
 
     setUnusedDays(result.unusedDays);
     setUnusedCredit(result.unusedCredit);
-  }, [currentMembership, previousDue, selectedPlan]);
+  }, [
+    collectAmount,
+    currentMembership,
+    previousDue,
+    previousDueAction,
+    selectedPlan,
+  ]);
 
   const calculateUnusedCredit = (membership: Membership) => {
     const today = startOfDay(new Date());
-    const endDate = startOfDay(new Date(membership.endDate));
-    const startDate = startOfDay(new Date(membership.startDate));
+    const endDate = startOfDay(
+      parseDateOnly(membership.endDate) ?? new Date(membership.endDate),
+    );
+    const startDate = startOfDay(
+      parseDateOnly(membership.startDate) ?? new Date(membership.startDate),
+    );
 
     if (endDate <= today) {
       return {
@@ -166,31 +188,69 @@ export function ChangeMembershipPlanScreen() {
     };
   };
 
+  const appliedUnusedCredit = applyUnusedCredit ? unusedCredit : 0;
+
   const baseAmount = selectedPlan
     ? Math.max(
-        (Number.isFinite(planAmountValue) ? planAmountValue : 0) - unusedCredit,
+        (Number.isFinite(planAmountValue) ? planAmountValue : 0) -
+          appliedUnusedCredit,
         0,
       )
     : 0;
 
-  const collectedAmount =
-    previousDueAction === 'collect' ? Number(collectAmount) || 0 : 0;
-  const remainingPreviousDue = getRemainingDue(previousDue, collectedAmount);
-
-  const finalAmount =
-    previousDueAction === 'carry_forward'
-      ? baseAmount + previousDue
-      : previousDueAction === 'collect'
-      ? baseAmount + remainingPreviousDue
-      : baseAmount;
-  const maxCollectableAmount = getMaxCollectableAmount({
+  const paymentSummary = calculateMembershipPaymentSummary({
+    planAmount: planAmountValue,
     previousDue,
-    newPlanAmount: baseAmount,
+    previousDueAction: previousDue > 0 ? previousDueAction : 'write_off',
+    collectAmount: Number(collectAmount) || 0,
+    unusedCredit: appliedUnusedCredit,
   });
+
+  const collectedAmount = paymentSummary.collectedAmount;
+  const remainingPreviousDue = paymentSummary.remainingPreviousDue;
+  const finalAmount = paymentSummary.finalAmount;
+  const maxCollectableAmount = paymentSummary.maxCollectableAmount;
+  const amountTakenValue = amountTaken.trim() ? Number(amountTaken) : 0;
+  const amountDueAfterPayment = Math.max(
+    finalAmount - (Number.isFinite(amountTakenValue) ? amountTakenValue : 0),
+    0,
+  );
+
+  const resolveSelectedStartDate = (): string | null => {
+    if (startDateOption === 'previous_end') {
+      if (!currentMembership) {
+        return null;
+      }
+
+      return currentMembership.endDate;
+    }
+
+    if (startDateOption === 'custom') {
+      const parsed = parseDateInput(customStartDate);
+
+      if (!parsed) {
+        Alert.alert(
+          'Invalid date',
+          'Please enter the start date in YYYY-MM-DD format.',
+        );
+        return null;
+      }
+
+      return formatDateOnly(parsed);
+    }
+
+    return formatDateOnly(new Date());
+  };
 
   const changePlan = async () => {
     if (!selectedPlan) {
       Alert.alert('Select a plan', 'Please select a membership plan.');
+      return;
+    }
+
+    const selectedStartDate = resolveSelectedStartDate();
+
+    if (!selectedStartDate) {
       return;
     }
 
@@ -202,6 +262,21 @@ export function ChangeMembershipPlanScreen() {
       Alert.alert(
         'Invalid amount',
         'Membership amount must be zero or greater.',
+      );
+      return;
+    }
+
+    if (
+      currentMembership &&
+      (!Number.isFinite(amountTakenValue) ||
+        amountTakenValue < 0 ||
+        amountTakenValue > finalAmount)
+    ) {
+      Alert.alert(
+        'Invalid payment',
+        `Amount received must be between ₹0 and ₹${finalAmount.toLocaleString(
+          'en-IN',
+        )}.`,
       );
       return;
     }
@@ -222,7 +297,7 @@ export function ChangeMembershipPlanScreen() {
                   memberId,
                   planId: selectedPlan.id,
                   amount: planAmountValue,
-                  startDate: new Date().toISOString(),
+                  startDate: selectedStartDate,
                 });
                 Alert.alert(
                   'Membership created',
@@ -250,8 +325,14 @@ export function ChangeMembershipPlanScreen() {
       'Confirm plan change',
       `Change ${memberName}'s membership to ${selectedPlan.name}?\n\n` +
         `New plan: ₹${planAmountValue.toLocaleString('en-IN')}\n` +
-        `Unused credit: ₹${unusedCredit.toLocaleString('en-IN')}\n` +
-        `Amount to pay: ₹${finalAmount.toLocaleString('en-IN')}`,
+        `Unused credit: ₹${(applyUnusedCredit
+          ? unusedCredit
+          : 0
+        ).toLocaleString('en-IN')}\n` +
+        `Amount received: ₹${amountTakenValue.toLocaleString('en-IN')}\n` +
+        `Amount due after payment: ₹${amountDueAfterPayment.toLocaleString(
+          'en-IN',
+        )}`,
       [
         {
           text: 'Cancel',
@@ -267,7 +348,7 @@ export function ChangeMembershipPlanScreen() {
                 throw new Error('Unable to identify the staff user.');
               }
 
-              if (previousDueAction === 'collect') {
+              if (previousDue > 0 && previousDueAction === 'collect') {
                 const validation = validateCollectionAmount({
                   collectAmount: Number(collectAmount),
                   previousDue,
@@ -305,27 +386,30 @@ export function ChangeMembershipPlanScreen() {
                     previousDueAction === 'write_off'
                       ? writeOffReason
                       : undefined,
-                  startDate:
-                    startDateOption === 'previous_end'
-                      ? currentMembership.endDate
-                      : new Date().toISOString(),
+                  startDate: selectedStartDate,
                   recordedBy: currentUser.id,
-                  applyUnusedCredit: true,
-                  previousMembershipFullyPaid: previousDue <= 0,
+                  transitionType: 'change_plan',
+                  applyUnusedCredit,
+                  newMembershipPaymentAmount: amountTakenValue,
+                  newMembershipPaymentMethod:
+                    amountTakenValue > 0 ? amountTakenMethod : undefined,
                 });
 
               const resultUnusedCredit =
                 'unusedCredit' in result ? result.unusedCredit : 0;
               const resultFinalAmount =
-                'finalAmount' in result ? result.finalAmount : finalAmount;
+                'finalAmount' in result
+                  ? result.finalAmount
+                  : amountDueAfterPayment;
 
               Alert.alert(
                 'Membership updated',
                 `Plan changed to ${selectedPlan.name}.\n\n` +
-                  `Unused credit: ₹${resultUnusedCredit.toLocaleString(
-                    'en-IN',
-                  )}\n` +
-                  `Amount to pay: ₹${resultFinalAmount.toLocaleString(
+                  `Unused credit: ₹${(applyUnusedCredit
+                    ? resultUnusedCredit
+                    : 0
+                  ).toLocaleString('en-IN')}\n` +
+                  `Amount due after payment: ₹${resultFinalAmount.toLocaleString(
                     'en-IN',
                   )}`,
                 [
@@ -493,72 +577,8 @@ export function ChangeMembershipPlanScreen() {
             </View>
           )}
 
-          {previousDue > 0 ? (
-            <>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionKicker}>02</Text>
-                <View style={styles.sectionCopy}>
-                  <Text style={styles.sectionTitle}>Previous due</Text>
-                  <Text style={styles.sectionSubtitle}>
-                    Decide what should happen to the outstanding amount.
-                  </Text>
-                </View>
-                <View style={styles.duePill}>
-                  <Text style={styles.duePillText}>
-                    ₹{previousDue.toLocaleString('en-IN')}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.componentCard}>
-                <PreviousDueSection
-                  amount={previousDue}
-                  action={previousDueAction}
-                  onActionChange={setPreviousDueAction}
-                  collectAmount={collectAmount}
-                  onCollectAmountChange={setCollectAmount}
-                  paymentMethod={paymentMethod}
-                  onPaymentMethodChange={setPaymentMethod}
-                  writeOffReason={writeOffReason}
-                  onWriteOffReasonChange={setWriteOffReason}
-                  maxCollectableAmount={maxCollectableAmount}
-                />
-              </View>
-            </>
-          ) : null}
-
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionKicker}>
-              {previousDue > 0 ? '03' : '02'}
-            </Text>
-            <View style={styles.sectionCopy}>
-              <Text style={styles.sectionTitle}>Start date</Text>
-              <Text style={styles.sectionSubtitle}>
-                {currentMembership
-                  ? 'Choose when the new membership should begin.'
-                  : 'The new membership will begin today.'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.componentCard}>
-            {currentMembership ? (
-              <MembershipStartDateSection
-                previousEndDate={currentMembership.endDate}
-                selected={startDateOption}
-                onChange={setStartDateOption}
-              />
-            ) : (
-              <Text style={styles.sectionSubtitle}>
-                The new membership will start today.
-              </Text>
-            )}
-          </View>
-
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionKicker}>
-              {previousDue > 0 ? '04' : '03'}
-            </Text>
+            <Text style={styles.sectionKicker}>02</Text>
             <View style={styles.sectionCopy}>
               <Text style={styles.sectionTitle}>Choose a new plan</Text>
               <Text style={styles.sectionSubtitle}>
@@ -680,6 +700,65 @@ export function ChangeMembershipPlanScreen() {
               </View>
             ) : null}
 
+            {currentMembership && selectedPlan ? (
+              <View style={styles.amountEditor}>
+                <Text style={styles.amountLabel}>Amount received now</Text>
+                <Text style={styles.amountHint}>
+                  Leave at ₹0 when no payment is received during this plan
+                  change.
+                </Text>
+                <View style={styles.amountInputWrap}>
+                  <Text style={styles.currency}>₹</Text>
+                  <TextInput
+                    value={amountTaken}
+                    onChangeText={setAmountTaken}
+                    keyboardType="decimal-pad"
+                    style={styles.amountInput}
+                    selectTextOnFocus
+                    placeholder="0"
+                  />
+                </View>
+                <Text style={styles.amountLabel}>Payment method</Text>
+                <View style={styles.receivedMethods}>
+                  {(
+                    ['cash', 'upi', 'card', 'bank', 'other'] as PaymentMethod[]
+                  ).map(method => {
+                    const selected = amountTakenMethod === method;
+
+                    return (
+                      <Pressable
+                        key={method}
+                        onPress={() => setAmountTakenMethod(method)}
+                        style={[
+                          styles.receivedMethodButton,
+                          selected && styles.receivedMethodSelected,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.receivedMethodText,
+                            selected && styles.receivedMethodSelectedText,
+                          ]}
+                        >
+                          {method === 'upi'
+                            ? 'UPI'
+                            : method.charAt(0).toUpperCase() + method.slice(1)}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : null}
+
+            {currentMembership && selectedPlan ? (
+              <UnusedCreditToggle
+                enabled={applyUnusedCredit}
+                onChange={setApplyUnusedCredit}
+                creditAmount={unusedCredit}
+              />
+            ) : null}
+
             {plans.length > 0 ? (
               <Pressable
                 style={[styles.secondaryButton, styles.addPlanButton]}
@@ -690,6 +769,72 @@ export function ChangeMembershipPlanScreen() {
             ) : null}
           </View>
 
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionKicker}>03</Text>
+            <View style={styles.sectionCopy}>
+              <Text style={styles.sectionTitle}>Start date</Text>
+              <Text style={styles.sectionSubtitle}>
+                {currentMembership
+                  ? 'Choose when the new membership should begin.'
+                  : 'The new membership will begin today.'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.componentCard}>
+            {currentMembership ? (
+              <MembershipStartDateSection
+                previousEndDate={currentMembership.endDate}
+                selected={startDateOption}
+                customDate={customStartDate}
+                onChange={setStartDateOption}
+                onCustomDateChange={setCustomStartDate}
+              />
+            ) : (
+              <MembershipStartDateSection
+                previousEndDate={new Date().toISOString()}
+                selected={startDateOption}
+                customDate={customStartDate}
+                onChange={setStartDateOption}
+                onCustomDateChange={setCustomStartDate}
+              />
+            )}
+          </View>
+
+          {previousDue > 0 ? (
+            <>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionKicker}>04</Text>
+                <View style={styles.sectionCopy}>
+                  <Text style={styles.sectionTitle}>Previous due</Text>
+                  <Text style={styles.sectionSubtitle}>
+                    Decide what should happen to the outstanding amount.
+                  </Text>
+                </View>
+                <View style={styles.duePill}>
+                  <Text style={styles.duePillText}>
+                    ₹{previousDue.toLocaleString('en-IN')}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.componentCard}>
+                <PreviousDueSection
+                  amount={previousDue}
+                  action={previousDueAction}
+                  onActionChange={setPreviousDueAction}
+                  collectAmount={collectAmount}
+                  onCollectAmountChange={setCollectAmount}
+                  paymentMethod={paymentMethod}
+                  onPaymentMethodChange={setPaymentMethod}
+                  writeOffReason={writeOffReason}
+                  onWriteOffReasonChange={setWriteOffReason}
+                  maxCollectableAmount={maxCollectableAmount}
+                />
+              </View>
+            </>
+          ) : null}
+
           {selectedPlan ? (
             <View style={styles.summaryCard}>
               <View style={styles.summaryTop}>
@@ -699,7 +844,11 @@ export function ChangeMembershipPlanScreen() {
                 </View>
 
                 <Text style={styles.summaryAmount}>
-                  ₹{finalAmount.toLocaleString('en-IN')}
+                  ₹
+                  {(currentMembership
+                    ? amountDueAfterPayment
+                    : finalAmount
+                  ).toLocaleString('en-IN')}
                 </Text>
               </View>
 
@@ -712,10 +861,10 @@ export function ChangeMembershipPlanScreen() {
                   ).toLocaleString('en-IN')}`}
                 />
 
-                {unusedCredit > 0 ? (
+                {appliedUnusedCredit > 0 ? (
                   <SummaryRow
                     label="Unused credit"
-                    value={`− ₹${unusedCredit.toLocaleString('en-IN')}`}
+                    value={`− ₹${appliedUnusedCredit.toLocaleString('en-IN')}`}
                     valueStyle={styles.positive}
                   />
                 ) : null}
@@ -743,14 +892,30 @@ export function ChangeMembershipPlanScreen() {
                     valueStyle={styles.attention}
                   />
                 ) : null}
+
+                {currentMembership ? (
+                  <SummaryRow
+                    label="Amount received"
+                    value={`− ₹${amountTakenValue.toLocaleString('en-IN')}`}
+                    valueStyle={styles.positive}
+                  />
+                ) : null}
               </View>
 
               <View style={styles.summaryDivider} />
 
               <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>Amount to pay</Text>
+                <Text style={styles.totalLabel}>
+                  {currentMembership
+                    ? 'Remaining after payment'
+                    : 'Amount to pay'}
+                </Text>
                 <Text style={styles.totalValue}>
-                  ₹{finalAmount.toLocaleString('en-IN')}
+                  ₹
+                  {(currentMembership
+                    ? amountDueAfterPayment
+                    : finalAmount
+                  ).toLocaleString('en-IN')}
                 </Text>
               </View>
             </View>
@@ -771,12 +936,17 @@ export function ChangeMembershipPlanScreen() {
             <Text style={styles.ctaLabel}>
               {selectedPlan
                 ? currentMembership
-                  ? 'AMOUNT TO PAY'
+                  ? 'REMAINING DUE'
                   : 'PLAN AMOUNT'
                 : 'SELECT A PLAN'}
             </Text>
             <Text style={styles.ctaAmount}>
-              {selectedPlan ? `₹${finalAmount.toLocaleString('en-IN')}` : '—'}
+              {selectedPlan
+                ? `₹${(currentMembership
+                    ? amountDueAfterPayment
+                    : finalAmount
+                  ).toLocaleString('en-IN')}`
+                : '—'}
             </Text>
           </View>
 
@@ -843,6 +1013,35 @@ function formatDate(date: string): string {
     month: 'short',
     year: 'numeric',
   });
+}
+
+function formatDateForInput(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateInput(value: string): Date | null {
+  const trimmed = value.trim();
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return null;
+  }
+
+  const [year, month, day] = trimmed.split('-').map(part => Number(part));
+  const parsed = new Date(year, month - 1, day);
+
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return parsed;
 }
 
 function isExpired(endDate: string): boolean {
@@ -1188,6 +1387,45 @@ const styles = StyleSheet.create({
     color: '#475467',
     fontSize: 12,
     fontWeight: '800',
+  },
+
+  amountHint: {
+    marginTop: -2,
+    marginBottom: 8,
+    color: '#667085',
+    fontSize: 12,
+    lineHeight: 17,
+  },
+
+  receivedMethods: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 2,
+  },
+
+  receivedMethodButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: '#D0D5DD',
+    backgroundColor: '#FFFFFF',
+  },
+
+  receivedMethodSelected: {
+    borderColor: '#15803D',
+    backgroundColor: '#15803D',
+  },
+
+  receivedMethodText: {
+    color: '#475467',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  receivedMethodSelectedText: {
+    color: '#FFFFFF',
   },
 
   amountInputWrap: {

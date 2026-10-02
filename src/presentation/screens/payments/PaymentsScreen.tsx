@@ -263,7 +263,7 @@ export default function PaymentsScreen() {
 
             <View style={styles.summaryRow}>
               <View style={styles.summaryCard}>
-                <Text style={styles.summaryLabel}>Paid</Text>
+                <Text style={styles.summaryLabel}>Amount taken</Text>
 
                 <Text style={styles.summaryAmount}>
                   {formatCurrency(totalPaid)}

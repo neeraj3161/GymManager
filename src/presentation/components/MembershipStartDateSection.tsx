@@ -1,14 +1,16 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { formatDateOnly, parseDateOnly } from '../../shared/utils/date';
 
-export type MembershipStartDateOption = 'previous_end' | 'today';
+export type MembershipStartDateOption = 'previous_end' | 'today' | 'custom';
 
 interface MembershipStartDateSectionProps {
   previousEndDate: string;
   selected: MembershipStartDateOption;
+  customDate?: string;
   onChange: (option: MembershipStartDateOption) => void;
+  onCustomDateChange?: (value: string) => void;
 }
 
 function formatDate(dateValue: string): string {
@@ -24,8 +26,12 @@ function formatDate(dateValue: string): string {
 export function MembershipStartDateSection({
   previousEndDate,
   selected,
+  customDate,
   onChange,
+  onCustomDateChange,
 }: MembershipStartDateSectionProps) {
+  const currentCustomDate = customDate || formatDateOnly(new Date());
+
   const options: Array<{
     value: MembershipStartDateOption;
     label: string;
@@ -41,7 +47,17 @@ export function MembershipStartDateSection({
       label: 'Today',
       date: formatDate(formatDateOnly(new Date())),
     },
+    {
+      value: 'custom',
+      label: 'Custom date',
+      date: formatDate(currentCustomDate),
+    },
   ];
+
+  const handleCustomDateChange = (value: string) => {
+    const sanitized = value.replace(/[^\d-]/g, '').slice(0, 10);
+    onCustomDateChange?.(sanitized);
+  };
 
   return (
     <View style={styles.container}>
@@ -59,13 +75,32 @@ export function MembershipStartDateSection({
             <View style={[styles.radio, isSelected && styles.radioSelected]}>
               {isSelected ? <View style={styles.radioDot} /> : null}
             </View>
-            <View>
+            <View style={styles.labelWrap}>
               <Text style={styles.label}>{option.label}</Text>
               <Text style={styles.date}>{option.date}</Text>
             </View>
           </Pressable>
         );
       })}
+
+      {selected === 'custom' ? (
+        <View style={styles.customInputWrap}>
+          <Text style={styles.customInputLabel}>Start date (YYYY-MM-DD)</Text>
+          <TextInput
+            value={currentCustomDate}
+            onChangeText={handleCustomDateChange}
+            placeholder="YYYY-MM-DD"
+            keyboardType="numeric"
+            maxLength={10}
+            style={styles.dateInput}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <Text style={styles.helpText}>
+            Enter a valid date in YYYY-MM-DD format.
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -88,6 +123,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 9,
     gap: 12,
+  },
+  labelWrap: {
+    flex: 1,
   },
   radio: {
     width: 20,
@@ -114,6 +152,34 @@ const styles = StyleSheet.create({
   },
   date: {
     marginTop: 2,
+    color: '#6B7280',
+  },
+  customInputWrap: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E7EB',
+  },
+  customInputLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#6B7280',
+    marginBottom: 8,
+  },
+  dateInput: {
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    backgroundColor: '#F9FAFB',
+    color: '#111827',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  helpText: {
+    marginTop: 6,
+    fontSize: 12,
     color: '#6B7280',
   },
 });

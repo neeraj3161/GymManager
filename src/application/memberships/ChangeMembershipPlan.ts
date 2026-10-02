@@ -3,7 +3,11 @@ import { MembershipRepository } from '../../domain/repositories/MembershipReposi
 import { PlanRepository } from '../../domain/repositories/PlanRepository';
 import { PaymentRepository } from '../../domain/repositories/PaymentRepository';
 import { MembershipAdjustmentRepository } from '../../domain/repositories/MembershipAdjustmentRepository';
-import { formatDateOnly, parseDateOnly } from '../../shared/utils/date';
+import {
+  calculateMembershipEndDate,
+  formatDateOnly,
+  parseDateOnly,
+} from '../../shared/utils/date';
 import { IdGenerator } from '../shared/IdGenerator';
 
 export interface ChangeMembershipPlanInput {
@@ -89,11 +93,16 @@ export class ChangeMembershipPlanUseCase {
     if (
       input.applyUnusedCredit &&
       previousMembershipFullyPaid &&
-      new Date(currentMembership.endDate) > today
+      (parseDateOnly(currentMembership.endDate) ??
+        new Date(currentMembership.endDate)) > today
     ) {
-      const startDate = new Date(currentMembership.startDate);
+      const startDate =
+        parseDateOnly(currentMembership.startDate) ??
+        new Date(currentMembership.startDate);
 
-      const endDate = new Date(currentMembership.endDate);
+      const endDate =
+        parseDateOnly(currentMembership.endDate) ??
+        new Date(currentMembership.endDate);
 
       const totalDays = Math.max(
         Math.ceil(
@@ -145,7 +154,7 @@ export class ChangeMembershipPlanUseCase {
       planId: newPlan.id,
       startDate: formatDateOnly(startDate),
       endDate: formatDateOnly(
-        this.calculateEndDate(startDate, newPlan.durationMonths),
+        calculateMembershipEndDate(startDate, newPlan.durationMonths),
       ),
       amount: planAmount,
       adjustmentAmount,
@@ -168,15 +177,5 @@ export class ChangeMembershipPlanUseCase {
       unusedCredit,
       finalAmount,
     };
-  }
-
-  private calculateEndDate(startDate: Date, durationMonths: number): Date {
-    const endDate = new Date(startDate);
-
-    endDate.setMonth(endDate.getMonth() + durationMonths);
-
-    endDate.setDate(endDate.getDate() - 1);
-
-    return endDate;
   }
 }

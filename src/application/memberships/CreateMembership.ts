@@ -1,7 +1,11 @@
 import { Membership } from '../../domain/entities/Membership';
 import { MembershipRepository } from '../../domain/repositories/MembershipRepository';
 import { PlanRepository } from '../../domain/repositories/PlanRepository';
-import { formatDateOnly, parseDateOnly } from '../../shared/utils/date';
+import {
+  calculateMembershipEndDate,
+  formatDateOnly,
+  parseDateOnly,
+} from '../../shared/utils/date';
 import { IdGenerator } from '../shared/IdGenerator';
 
 export interface CreateMembershipInput {
@@ -9,20 +13,6 @@ export interface CreateMembershipInput {
   planId: string;
   startDate?: string;
   amount?: number;
-}
-
-function addMonths(date: Date, months: number): Date {
-  const result = new Date(date);
-  const originalDay = result.getDate();
-  result.setDate(1);
-  result.setMonth(result.getMonth() + months);
-  const lastDay = new Date(
-    result.getFullYear(),
-    result.getMonth() + 1,
-    0,
-  ).getDate();
-  result.setDate(Math.min(originalDay, lastDay));
-  return result;
 }
 
 export class CreateMembershipUseCase {
@@ -54,8 +44,7 @@ export class CreateMembershipUseCase {
       throw new Error('Invalid membership start date');
     }
 
-    const end = addMonths(start, plan.durationMonths);
-    end.setDate(end.getDate() - 1);
+    const end = calculateMembershipEndDate(start, plan.durationMonths);
 
     const now = new Date().toISOString();
 

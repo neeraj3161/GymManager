@@ -24,10 +24,12 @@ import {
   PreviousDueAction,
 } from '../../components/PreviousDueSection';
 import {
+  calculateMembershipPaymentSummary,
   getMaxCollectableAmount,
-  getRemainingDue,
   validateCollectionAmount,
 } from '../../../application/memberships/collectionValidation';
+import { formatDateOnly, parseDateOnly } from '../../../shared/utils/date';
+import { UnusedCreditToggle } from '../../components/UnusedCreditToggle';
 import {
   MembershipStartDateOption,
   MembershipStartDateSection,
@@ -48,13 +50,17 @@ export function RenewMembershipScreen() {
   const [currentMembership, setCurrentMembership] = useState<any>(null);
   const [startDateOption, setStartDateOption] =
     useState<MembershipStartDateOption>('today');
+  const [customStartDate, setCustomStartDate] = useState(
+    formatDateForInput(new Date()),
+  );
 
   const [saving, setSaving] = useState(false);
+  const [applyUnusedCredit, setApplyUnusedCredit] = useState(false);
 
   const [previousDue, setPreviousDue] = useState(0);
 
   const [previousDueAction, setPreviousDueAction] =
-    useState<PreviousDueAction>('collect');
+    useState<PreviousDueAction>('carry_forward');
 
   const [collectAmount, setCollectAmount] = useState('');
 
@@ -112,24 +118,62 @@ export function RenewMembershipScreen() {
 
   const selectedPlan = plans.find(plan => plan.id === selectedPlanId);
   const planAmountValue = Number(planAmount);
+  const dueWillBeSettled =
+    previousDue <= 0 ||
+    previousDueAction === 'write_off' ||
+    (previousDueAction === 'collect' && Number(collectAmount) >= previousDue);
+  const unusedCredit =
+    currentMembership && dueWillBeSettled
+      ? calculateUnusedCredit(currentMembership)
+      : 0;
+  const appliedUnusedCredit = applyUnusedCredit ? unusedCredit : 0;
   const maxCollectableAmount = getMaxCollectableAmount({
     previousDue,
     newPlanAmount: selectedPlan?.amount ?? 0,
   });
-  const collectedAmount =
-    previousDueAction === 'collect' ? Number(collectAmount) || 0 : 0;
-  const remainingPreviousDue = getRemainingDue(previousDue, collectedAmount);
-  const previousDueToCarryForward =
-    previousDueAction === 'carry_forward' || previousDueAction === 'collect'
-      ? remainingPreviousDue
-      : 0;
-  const totalDueAfterRenewal =
-    (Number.isFinite(planAmountValue) ? planAmountValue : 0) +
-    previousDueToCarryForward;
+  const paymentSummary = calculateMembershipPaymentSummary({
+    planAmount: Number.isFinite(planAmountValue) ? planAmountValue : 0,
+    previousDue,
+    previousDueAction: previousDue > 0 ? previousDueAction : 'write_off',
+    collectAmount: Number(collectAmount) || 0,
+    unusedCredit: appliedUnusedCredit,
+  });
+
+  const collectedAmount = paymentSummary.collectedAmount;
+  const remainingPreviousDue = paymentSummary.remainingPreviousDue;
+  const totalDueAfterRenewal = paymentSummary.finalAmount;
+
+  const resolveSelectedStartDate = (): string | null => {
+    if (startDateOption === 'previous_end') {
+      return currentMembership?.endDate ?? null;
+    }
+
+    if (startDateOption === 'custom') {
+      const parsed = parseDateInput(customStartDate);
+
+      if (!parsed) {
+        Alert.alert(
+          'Invalid date',
+          'Please enter the start date in YYYY-MM-DD format.',
+        );
+        return null;
+      }
+
+      return formatDateOnly(parsed);
+    }
+
+    return formatDateOnly(new Date());
+  };
 
   const renew = async () => {
     if (!selectedPlanId) {
       Alert.alert('Select a plan', 'Please select a membership plan.');
+      return;
+    }
+
+    const selectedStartDate = resolveSelectedStartDate();
+
+    if (!selectedStartDate) {
       return;
     }
 
@@ -163,7 +207,7 @@ export function RenewMembershipScreen() {
     /*
      * Validate collection amount.
      */
-    if (previousDueAction === 'collect') {
+    if (previousDue > 0 && previousDueAction === 'collect') {
       const amount = Number(collectAmount);
       const validation = validateCollectionAmount({
         collectAmount: amount,
@@ -201,38 +245,49 @@ export function RenewMembershipScreen() {
     try {
       setSaving(true);
 
-      await container.useCases.processMembershipTransition.execute({
-        memberId,
+      const transitionResult =
+        await container.useCases.processMembershipTransition.execute({
+          memberId,
 
-        planId: selectedPlanId,
-        planAmount: planAmountValue,
+          planId: selectedPlanId,
+          planAmount: planAmountValue,
 
-        previousDue,
-        previousDueAction: previousDue > 0 ? previousDueAction : 'none',
+          previousDue,
+          previousDueAction: previousDue > 0 ? previousDueAction : 'none',
 
-        previousMembershipId: currentMembership.id,
-        startDate:
-          startDateOption === 'previous_end'
-            ? currentMembership.endDate
-            : new Date().toISOString(),
+          previousMembershipId: currentMembership.id,
+          startDate: selectedStartDate,
 
-        collectAmount:
-          previousDueAction === 'collect' ? Number(collectAmount) : undefined,
+          collectAmount:
+            previousDueAction === 'collect' ? Number(collectAmount) : undefined,
 
-        paymentMethod:
-          previousDueAction === 'collect' ? paymentMethod : undefined,
+          paymentMethod:
+            previousDueAction === 'collect' ? paymentMethod : undefined,
 
-        writeOffReason:
-          previousDueAction === 'write_off' ? writeOffReason : undefined,
+          writeOffReason:
+            previousDueAction === 'write_off' ? writeOffReason : undefined,
 
-        applyUnusedCredit: false,
+          transitionType: 'renew',
+          applyUnusedCredit,
 
-        recordedBy: currentUserId,
-      });
+          recordedBy: currentUserId,
+        });
+
+      const resultUnusedCredit =
+        'unusedCredit' in transitionResult ? transitionResult.unusedCredit : 0;
+      const resultFinalAmount =
+        'finalAmount' in transitionResult
+          ? transitionResult.finalAmount
+          : totalDueAfterRenewal;
 
       Alert.alert(
         'Membership renewed',
-        `${selectedPlan?.name ?? 'Membership'} has been added.`,
+        `${selectedPlan?.name ?? 'Membership'} has been added.\n\n` +
+          `Unused credit: ₹${(applyUnusedCredit
+            ? resultUnusedCredit
+            : 0
+          ).toLocaleString('en-IN')}\n` +
+          `Amount due: ₹${resultFinalAmount.toLocaleString('en-IN')}`,
         [
           {
             text: 'OK',
@@ -311,6 +366,24 @@ export function RenewMembershipScreen() {
             </View>
           ) : null}
 
+          {currentMembership && selectedPlan ? (
+            <UnusedCreditToggle
+              enabled={applyUnusedCredit}
+              onChange={setApplyUnusedCredit}
+              creditAmount={unusedCredit}
+            />
+          ) : null}
+
+          {currentMembership && (
+            <MembershipStartDateSection
+              previousEndDate={currentMembership.endDate}
+              selected={startDateOption}
+              customDate={customStartDate}
+              onChange={setStartDateOption}
+              onCustomDateChange={setCustomStartDate}
+            />
+          )}
+
           <PreviousDueSection
             amount={previousDue}
             action={previousDueAction}
@@ -323,14 +396,6 @@ export function RenewMembershipScreen() {
             onWriteOffReasonChange={setWriteOffReason}
             maxCollectableAmount={maxCollectableAmount}
           />
-
-          {currentMembership && (
-            <MembershipStartDateSection
-              previousEndDate={currentMembership.endDate}
-              selected={startDateOption}
-              onChange={setStartDateOption}
-            />
-          )}
 
           {selectedPlan && (
             <View style={styles.summary}>
@@ -362,6 +427,15 @@ export function RenewMembershipScreen() {
                   ).toLocaleString('en-IN')}
                 </Text>
               </View>
+
+              {appliedUnusedCredit > 0 ? (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.label}>Unused credit</Text>
+                  <Text style={styles.value}>
+                    − ₹{appliedUnusedCredit.toLocaleString('en-IN')}
+                  </Text>
+                </View>
+              ) : null}
 
               {previousDue > 0 && (
                 <View style={styles.summaryRow}>
@@ -409,6 +483,70 @@ export function RenewMembershipScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+function formatDateForInput(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateInput(value: string): Date | null {
+  const trimmed = value.trim();
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return null;
+  }
+
+  const [year, month, day] = trimmed.split('-').map(part => Number(part));
+  const parsed = new Date(year, month - 1, day);
+
+  if (
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() !== month - 1 ||
+    parsed.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return parsed;
+}
+
+function calculateUnusedCredit(membership: {
+  amount: number;
+  startDate: string;
+  endDate: string;
+}): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const startDate =
+    parseDateOnly(membership.startDate) ?? new Date(membership.startDate);
+  const endDate =
+    parseDateOnly(membership.endDate) ?? new Date(membership.endDate);
+  startDate.setHours(0, 0, 0, 0);
+  endDate.setHours(0, 0, 0, 0);
+
+  if (endDate <= today) {
+    return 0;
+  }
+
+  const dayInMilliseconds = 24 * 60 * 60 * 1000;
+  const totalDays = Math.max(
+    Math.ceil((endDate.getTime() - startDate.getTime()) / dayInMilliseconds) +
+      1,
+    1,
+  );
+  const unusedDays = Math.max(
+    Math.ceil((endDate.getTime() - today.getTime()) / dayInMilliseconds),
+    0,
+  );
+
+  return Math.min(
+    membership.amount,
+    Math.round((membership.amount / totalDays) * unusedDays),
   );
 }
 

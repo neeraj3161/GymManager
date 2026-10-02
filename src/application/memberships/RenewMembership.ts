@@ -2,7 +2,11 @@ import { Membership } from '../../domain/entities/Membership';
 import { MembershipRepository } from '../../domain/repositories/MembershipRepository';
 import { MembershipPlan } from '../../domain/entities/MembershipPlan';
 import { PlanRepository } from '../../domain/repositories/PlanRepository';
-import { formatDateOnly, parseDateOnly } from '../../shared/utils/date';
+import {
+  calculateMembershipEndDate,
+  formatDateOnly,
+  parseDateOnly,
+} from '../../shared/utils/date';
 import { IdGenerator } from '../shared/IdGenerator';
 
 export interface RenewMembershipInput {
@@ -53,9 +57,7 @@ export class RenewMembershipUseCase {
       throw new Error('Invalid membership start date');
     }
 
-    const endDate = new Date(startDate);
-    endDate.setMonth(endDate.getMonth() + plan.durationMonths);
-    endDate.setDate(endDate.getDate() - 1);
+    const endDate = calculateMembershipEndDate(startDate, plan.durationMonths);
 
     const now = new Date().toISOString();
 

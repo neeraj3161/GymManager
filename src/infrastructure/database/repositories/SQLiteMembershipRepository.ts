@@ -50,9 +50,21 @@ export class SQLiteMembershipRepository implements MembershipRepository {
     const rows = await this.database.query<MembershipRow>(
       `SELECT * FROM memberships
        WHERE member_id = ?
-         AND date(start_date) <= date('now', 'localtime')
        ORDER BY
-         CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+         CASE
+           WHEN status = 'active'
+             AND date(start_date) <= date('now', 'localtime')
+             AND date(end_date) >= date('now', 'localtime') THEN 0
+           WHEN status = 'active'
+             AND date(start_date) > date('now', 'localtime') THEN 1
+           WHEN status = 'active' THEN 2
+           ELSE 3
+         END,
+         CASE
+           WHEN status = 'active'
+             AND date(start_date) > date('now', 'localtime')
+           THEN date(start_date)
+         END ASC,
          date(start_date) DESC,
          datetime(created_at) DESC
        LIMIT 1`,

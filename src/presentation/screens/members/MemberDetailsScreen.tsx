@@ -592,7 +592,7 @@ export function MemberDetailsScreen() {
             value={feeStatus ? formatCurrency(feeStatus.adjustmentAmount) : '-'}
           />
 
-          <Row label="Total paid" value={formatCurrency(totalPaid)} />
+          <Row label="Amount taken" value={formatCurrency(totalPaid)} />
 
           <Row label="Remaining" value={formatCurrency(remainingAmount)} last />
         </Section>
