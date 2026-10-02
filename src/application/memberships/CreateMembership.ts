@@ -1,12 +1,14 @@
 import { Membership } from '../../domain/entities/Membership';
 import { MembershipRepository } from '../../domain/repositories/MembershipRepository';
 import { PlanRepository } from '../../domain/repositories/PlanRepository';
+import { formatDateOnly, parseDateOnly } from '../../shared/utils/date';
 import { IdGenerator } from '../shared/IdGenerator';
 
 export interface CreateMembershipInput {
   memberId: string;
   planId: string;
   startDate?: string;
+  amount?: number;
 }
 
 function addMonths(date: Date, months: number): Date {
@@ -31,13 +33,26 @@ export class CreateMembershipUseCase {
   ) {}
 
   async execute(input: CreateMembershipInput): Promise<Membership> {
+    if (
+      input.amount !== undefined &&
+      (!Number.isFinite(input.amount) || input.amount < 0)
+    ) {
+      throw new Error('Membership amount must be zero or greater');
+    }
+
     const plan = await this.planRepository.getById(input.planId);
 
     if (!plan || !plan.active) {
       throw new Error('Membership plan not found or inactive');
     }
 
-    const start = input.startDate ? new Date(input.startDate) : new Date();
+    const start = input.startDate
+      ? parseDateOnly(input.startDate) ?? new Date(input.startDate)
+      : new Date();
+
+    if (Number.isNaN(start.getTime())) {
+      throw new Error('Invalid membership start date');
+    }
 
     const end = addMonths(start, plan.durationMonths);
     end.setDate(end.getDate() - 1);
@@ -48,9 +63,9 @@ export class CreateMembershipUseCase {
       id: this.idGenerator.generate(),
       memberId: input.memberId,
       planId: plan.id,
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      amount: plan.amount,
+      startDate: formatDateOnly(start),
+      endDate: formatDateOnly(end),
+      amount: input.amount ?? plan.amount,
 
       adjustmentAmount: 0,
 

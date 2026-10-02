@@ -14,4 +14,6 @@ export interface MemberRepository {
   save(member: Member): Promise<void>;
 
   update(member: Member): Promise<void>;
+
+  delete(id: string): Promise<void>;
 }

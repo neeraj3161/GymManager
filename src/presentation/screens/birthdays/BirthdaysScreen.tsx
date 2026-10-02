@@ -16,6 +16,7 @@ import { useFocusEffect } from '@react-navigation/native';
 
 import { BirthdayMember } from '../../../application/birthdays/GetUpcomingBirthdays';
 import { container } from '../../../di/container';
+import { buildWhatsAppUrl } from '../../../shared/utils/whatsapp';
 
 export function BirthdaysScreen() {
   const [birthdays, setBirthdays] = useState<BirthdayMember[]>([]);
@@ -101,61 +102,12 @@ export function BirthdaysScreen() {
     );
   };
 
-  const normalizeIndianPhone = (phone: string): string => {
-    const digits = phone.replace(/\D/g, '');
-
-    if (digits.length === 10) {
-      return `91${digits}`;
-    }
-
-    if (digits.length === 12 && digits.startsWith('91')) {
-      return digits;
-    }
-
-    if (digits.startsWith('0') && digits.length === 11) {
-      return `91${digits.substring(1)}`;
-    }
-
-    return digits;
-  };
-
   const sendBirthdayWhatsApp = async (birthday: BirthdayMember) => {
     try {
       const gymName = await getGymName();
       const name = getFullName(birthday);
-      const phone = normalizeIndianPhone(birthday.member.phone);
-
-      if (!phone) {
-        Alert.alert(
-          'Invalid phone number',
-          'This member does not have a valid phone number.',
-        );
-        return;
-      }
-
       const message = buildBirthdayMessage(name, gymName);
-
-      const url =
-        `whatsapp://send?phone=${phone}` +
-        `&text=${encodeURIComponent(message)}`;
-
-      if (await Linking.canOpenURL(url)) {
-        await Linking.openURL(url);
-        return;
-      }
-
-      const webUrl = `https://wa.me/${phone}?text=${encodeURIComponent(
-        message,
-      )}`;
-
-      if (await Linking.canOpenURL(webUrl)) {
-        await Linking.openURL(webUrl);
-        return;
-      }
-
-      throw new Error(
-        'WhatsApp is not installed and a browser is unavailable.',
-      );
+      await Linking.openURL(buildWhatsAppUrl(birthday.member.phone, message));
     } catch (error) {
       Alert.alert(
         'Unable to open WhatsApp',

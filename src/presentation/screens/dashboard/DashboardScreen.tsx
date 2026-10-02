@@ -225,7 +225,7 @@ export function DashboardScreen() {
             tone="red"
           />
           <FocusStat
-            label="Expiring"
+            label="Expired / soon"
             value={String(dashboard.expiringSoon)}
             suffix="members"
             tone="amber"
@@ -278,9 +278,9 @@ export function DashboardScreen() {
       <View style={styles.attentionGrid}>
         <AttentionCard
           icon="◷"
-          label="EXPIRING"
+          label="EXPIRED / EXPIRING"
           value={String(dashboard.expiringSoon)}
-          caption="Next 7 days"
+          caption="Expired or next 7 days"
           tone="amber"
           onPress={() =>
             navigation.navigate('Members', {

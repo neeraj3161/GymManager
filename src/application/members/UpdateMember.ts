@@ -1,5 +1,6 @@
 import { Member } from '../../domain/entities/Member';
 import { MemberRepository } from '../../domain/repositories/MemberRepository';
+import { parseDateOnly } from '../../shared/utils/date';
 
 export interface UpdateMemberInput {
   id: string;
@@ -38,9 +39,9 @@ export class UpdateMemberUseCase {
     }
 
     if (input.dateOfBirth) {
-      const dob = new Date(input.dateOfBirth);
+      const dob = parseDateOnly(input.dateOfBirth);
 
-      if (Number.isNaN(dob.getTime())) {
+      if (!dob) {
         throw new Error('Invalid date of birth.');
       }
 

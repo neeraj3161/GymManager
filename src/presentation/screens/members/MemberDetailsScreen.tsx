@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Modal,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -27,6 +28,7 @@ import { MemberFeeStatus } from '../../../application/payments/GetMemberFeeStatu
 import { UpdateMemberUseCase } from '../../../application/members/UpdateMember';
 import { container } from '../../../di/container';
 import { calculateAge } from '../../../shared/utils/age';
+import { parseDateOnly } from '../../../shared/utils/date';
 
 export function MemberDetailsScreen() {
   const navigation = useNavigation<any>();
@@ -295,6 +297,35 @@ export function MemberDetailsScreen() {
     }
   };
 
+  const deleteMember = () => {
+    if (!member) {
+      return;
+    }
+
+    Alert.alert(
+      'Delete member permanently?',
+      `This will permanently delete ${memberName}'s profile, membership, payment, adjustment, and reminder history. This cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete permanently',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await container.useCases.deleteMember.execute(member.id);
+              navigation.goBack();
+            } catch (err) {
+              Alert.alert(
+                'Unable to delete member',
+                err instanceof Error ? err.message : 'Something went wrong.',
+              );
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const callMember = async () => {
     if (!member) {
       return;
@@ -424,28 +455,40 @@ export function MemberDetailsScreen() {
                 </Text>
               </Pressable>
 
-              {showDobPicker ? (
-                <DateTimePicker
-                  value={
-                    parseDateInput(editDateOfBirth) ?? new Date(1995, 0, 1)
-                  }
-                  mode="date"
-                  display="default"
-                  maximumDate={new Date()}
-                  onChange={(event, selectedDate) => {
-                    if (event.type === 'dismissed') {
-                      setShowDobPicker(false);
-                      return;
-                    }
+              <Modal
+                transparent
+                animationType="fade"
+                visible={showDobPicker}
+                onRequestClose={() => setShowDobPicker(false)}
+              >
+                <Pressable
+                  style={styles.pickerBackdrop}
+                  onPress={() => setShowDobPicker(false)}
+                >
+                  <View style={styles.pickerSheet}>
+                    <DateTimePicker
+                      value={
+                        parseDateInput(editDateOfBirth) ?? new Date(1995, 0, 1)
+                      }
+                      mode="date"
+                      display="default"
+                      maximumDate={new Date()}
+                      onChange={(event, selectedDate) => {
+                        if (event.type === 'dismissed') {
+                          setShowDobPicker(false);
+                          return;
+                        }
 
-                    if (selectedDate) {
-                      setEditDateOfBirth(formatDateForInput(selectedDate));
-                    }
+                        if (selectedDate) {
+                          setEditDateOfBirth(formatDateForInput(selectedDate));
+                        }
 
-                    setShowDobPicker(false);
-                  }}
-                />
-              ) : null}
+                        setShowDobPicker(false);
+                      }}
+                    />
+                  </View>
+                </Pressable>
+              </Modal>
 
               {calculateAge(editDateOfBirth) !== null ? (
                 <Text style={styles.agePreview}>
@@ -628,17 +671,6 @@ export function MemberDetailsScreen() {
             </Pressable>
           )}
 
-          {!editing &&
-            (member.status === 'active' ? (
-              <Pressable style={styles.dangerButton} onPress={disable}>
-                <Text style={styles.dangerButtonText}>Disable Member</Text>
-              </Pressable>
-            ) : (
-              <Pressable style={styles.primaryButton} onPress={enable}>
-                <Text style={styles.primaryButtonText}>Enable Member</Text>
-              </Pressable>
-            ))}
-
           <Pressable
             style={styles.actionButton}
             onPress={() =>
@@ -648,7 +680,7 @@ export function MemberDetailsScreen() {
               })
             }
           >
-            <Text style={styles.actionButtonText}>Payments</Text>
+            <Text style={styles.actionButtonText}>Record Payment</Text>
           </Pressable>
 
           <Pressable
@@ -674,6 +706,23 @@ export function MemberDetailsScreen() {
           >
             <Text style={styles.actionButtonText}>Change Plan</Text>
           </Pressable>
+
+          {!editing &&
+            (member.status === 'active' ? (
+              <Pressable style={styles.dangerButton} onPress={disable}>
+                <Text style={styles.dangerButtonText}>Disable Member</Text>
+              </Pressable>
+            ) : (
+              <Pressable style={styles.primaryButton} onPress={enable}>
+                <Text style={styles.primaryButtonText}>Enable Member</Text>
+              </Pressable>
+            ))}
+
+          {!editing ? (
+            <Pressable style={styles.dangerButton} onPress={deleteMember}>
+              <Text style={styles.dangerButtonText}>Delete Member</Text>
+            </Pressable>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -785,7 +834,9 @@ function formatCurrency(amount: number) {
 }
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('en-IN', {
+  const parsed = parseDateOnly(value) ?? new Date(value);
+
+  return parsed.toLocaleDateString('en-IN', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -1074,6 +1125,21 @@ const styles = StyleSheet.create({
   dateFieldText: {
     color: '#111827',
     fontSize: 15,
+  },
+
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.32)',
+    justifyContent: 'flex-end',
+  },
+
+  pickerSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 10,
+    paddingBottom: 20,
+    alignItems: 'center',
   },
 
   agePreview: {

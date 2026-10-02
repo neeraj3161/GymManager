@@ -2,11 +2,14 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
-  SafeAreaView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 import { NavigationContainer } from '@react-navigation/native';
 
@@ -78,6 +81,7 @@ export function AppNavigator() {
   // Subscribe to Zustand. This is the key fix.
   const user = useAuthStore(state => state.user);
   const hydrate = useAuthStore(state => state.hydrate);
+  const insets = useSafeAreaInsets();
 
   const [initialMode, setInitialMode] = useState<InitialMode>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -174,7 +178,14 @@ export function AppNavigator() {
   if (initialMode === 'ownerSetup') {
     return (
       <NavigationContainer>
-        <Stack.Navigator>
+        <Stack.Navigator
+          screenOptions={{
+            contentStyle: {
+              paddingTop: insets.top,
+              paddingBottom: insets.bottom,
+            },
+          }}
+        >
           <Stack.Screen
             name="OwnerSetup"
             children={() => (
@@ -195,7 +206,11 @@ export function AppNavigator() {
   return (
     <NavigationContainer key={user ? 'authenticated' : 'unauthenticated'}>
       {user ? (
-        <Stack.Navigator>
+        <Stack.Navigator
+          screenOptions={{
+            contentStyle: { paddingBottom: insets.bottom },
+          }}
+        >
           <Stack.Screen
             name="Dashboard"
             component={DashboardScreen}
@@ -284,7 +299,14 @@ export function AppNavigator() {
           />
         </Stack.Navigator>
       ) : (
-        <Stack.Navigator>
+        <Stack.Navigator
+          screenOptions={{
+            contentStyle: {
+              paddingTop: insets.top,
+              paddingBottom: insets.bottom,
+            },
+          }}
+        >
           <Stack.Screen
             name="Login"
             component={LoginScreen}

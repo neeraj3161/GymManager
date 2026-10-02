@@ -13,7 +13,9 @@ export type PreviousDueAction =
 export interface ProcessMembershipTransitionInput {
   memberId: string;
   planId: string;
+  planAmount?: number;
 
+  previousDue?: number;
   previousDueAction: PreviousDueAction;
 
   previousMembershipId?: string;
@@ -66,6 +68,12 @@ export class ProcessMembershipTransitionUseCase {
         throw new Error('Collection amount must be greater than zero');
       }
 
+      const maxCollectable = input.previousDue ?? input.collectAmount;
+
+      if (input.collectAmount > maxCollectable) {
+        throw new Error('Collection amount cannot exceed the outstanding due.');
+      }
+
       if (!input.paymentMethod) {
         throw new Error('Payment method is required');
       }
@@ -107,6 +115,7 @@ export class ProcessMembershipTransitionUseCase {
       result = await this.changeMembershipPlan.execute({
         memberId: input.memberId,
         newPlanId: input.planId,
+        amount: input.planAmount,
         applyUnusedCredit: true,
         previousMembershipFullyPaid: input.previousMembershipFullyPaid,
         startDate: input.startDate,
@@ -115,6 +124,7 @@ export class ProcessMembershipTransitionUseCase {
       result = await this.renewMembership.execute({
         memberId: input.memberId,
         planId: input.planId,
+        amount: input.planAmount,
         startDate: input.startDate,
       });
     }
@@ -125,7 +135,10 @@ export class ProcessMembershipTransitionUseCase {
      * This happens AFTER the new membership exists.
      */
 
-    if (input.previousDueAction === 'carry_forward') {
+    if (
+      input.previousDueAction === 'carry_forward' ||
+      (input.previousDueAction === 'collect' && input.previousDue)
+    ) {
       if (!input.previousMembershipId) {
         throw new Error('Previous membership is required');
       }
@@ -133,17 +146,27 @@ export class ProcessMembershipTransitionUseCase {
       const newMembershipId =
         'membership' in result ? result.membership.id : result.id;
 
-      const transferIn = await this.carryForwardMembershipDue.execute({
-        previousMembershipId: input.previousMembershipId,
-        newMembershipId,
-        createdBy: input.recordedBy,
-      });
+      const previousDueAmount = input.previousDue ?? 0;
 
-      if ('finalAmount' in result) {
-        return {
-          ...result,
-          finalAmount: result.finalAmount + transferIn.amount,
-        };
+      const transferAmount =
+        input.previousDueAction === 'carry_forward'
+          ? previousDueAmount
+          : Math.max(previousDueAmount - (input.collectAmount ?? 0), 0);
+
+      if (transferAmount > 0) {
+        const transferIn = await this.carryForwardMembershipDue.execute({
+          previousMembershipId: input.previousMembershipId,
+          newMembershipId,
+          createdBy: input.recordedBy,
+          amount: transferAmount,
+        });
+
+        if ('finalAmount' in result) {
+          return {
+            ...result,
+            finalAmount: result.finalAmount + transferIn.amount,
+          };
+        }
       }
     }
 

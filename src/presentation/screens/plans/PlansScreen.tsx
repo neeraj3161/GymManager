@@ -14,11 +14,13 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MembershipPlan } from '../../../domain/entities/MembershipPlan';
 import { container } from '../../../di/container';
 
 export function PlansScreen() {
+  const insets = useSafeAreaInsets();
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingPlan, setEditingPlan] = useState<MembershipPlan | null>(null);
@@ -325,6 +327,7 @@ export function PlansScreen() {
                 <View style={styles.planFooter}>
                   <Pressable
                     onPress={() => openEditModal(plan)}
+                    hitSlop={8}
                     style={({ pressed }) => [
                       styles.textButton,
                       pressed && styles.pressed,
@@ -335,6 +338,7 @@ export function PlansScreen() {
 
                   <Pressable
                     onPress={() => togglePlan(plan)}
+                    hitSlop={8}
                     style={({ pressed }) => [
                       styles.textButton,
                       pressed && styles.pressed,
@@ -364,7 +368,7 @@ export function PlansScreen() {
       >
         <KeyboardAvoidingView
           style={styles.modalRoot}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={styles.modalOverlay}>
             <Pressable
@@ -451,7 +455,12 @@ export function PlansScreen() {
                 />
               </ScrollView>
 
-              <View style={styles.sheetFooter}>
+              <View
+                style={[
+                  styles.sheetFooter,
+                  { paddingBottom: Math.max(insets.bottom, 12) },
+                ]}
+              >
                 <Pressable
                   style={({ pressed }) => [
                     styles.cancelButton,
@@ -782,7 +791,10 @@ const styles = StyleSheet.create({
   },
 
   textButton: {
-    paddingVertical: 4,
+    minWidth: 44,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 
   editText: {

@@ -23,6 +23,8 @@ interface PreviousDueSectionProps {
   writeOffReason: string;
 
   onWriteOffReasonChange: (value: string) => void;
+
+  maxCollectableAmount?: number;
 }
 
 const paymentMethods: PaymentMethod[] = [
@@ -43,6 +45,7 @@ export function PreviousDueSection({
   onPaymentMethodChange,
   writeOffReason,
   onWriteOffReasonChange,
+  maxCollectableAmount,
 }: PreviousDueSectionProps) {
   if (amount <= 0) {
     return (
@@ -129,6 +132,12 @@ export function PreviousDueSection({
             style={styles.input}
           />
 
+          {typeof maxCollectableAmount === 'number' ? (
+            <Text style={styles.maxCollectText}>
+              Max allowed: ₹{maxCollectableAmount.toLocaleString('en-IN')}
+            </Text>
+          ) : null}
+
           <Text style={styles.label}>Payment Method</Text>
 
           <View style={styles.methods}>
@@ -212,6 +221,14 @@ const styles = StyleSheet.create({
     marginTop: 6,
     color: '#6B7280',
     lineHeight: 20,
+  },
+
+  maxCollectText: {
+    marginTop: 6,
+    marginBottom: 8,
+    color: '#4B5563',
+    fontSize: 12,
+    fontWeight: '600',
   },
 
   noDue: {

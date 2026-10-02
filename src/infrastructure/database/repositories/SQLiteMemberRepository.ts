@@ -95,12 +95,12 @@ export class SQLiteMemberRepository implements MemberRepository {
   }
 
   async getByPhone(phone: string): Promise<Member | null> {
-    const rows = await this.database.query<Member>(
+    const rows = await this.database.query<MemberRow>(
       `SELECT * FROM members WHERE phone = ? LIMIT 1`,
       [phone],
     );
 
-    return rows[0] ?? null;
+    return rows[0] ? toMember(rows[0]) : null;
   }
   async update(member: Member): Promise<void> {
     await this.database.execute(
@@ -124,5 +124,9 @@ export class SQLiteMemberRepository implements MemberRepository {
         member.id,
       ],
     );
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.database.execute('DELETE FROM members WHERE id = ?', [id]);
   }
 }

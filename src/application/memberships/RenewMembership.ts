@@ -2,12 +2,14 @@ import { Membership } from '../../domain/entities/Membership';
 import { MembershipRepository } from '../../domain/repositories/MembershipRepository';
 import { MembershipPlan } from '../../domain/entities/MembershipPlan';
 import { PlanRepository } from '../../domain/repositories/PlanRepository';
+import { formatDateOnly, parseDateOnly } from '../../shared/utils/date';
 import { IdGenerator } from '../shared/IdGenerator';
 
 export interface RenewMembershipInput {
   memberId: string;
   planId: string;
   startDate?: string;
+  amount?: number;
 }
 
 export class RenewMembershipUseCase {
@@ -26,6 +28,13 @@ export class RenewMembershipUseCase {
       throw new Error('Plan ID is required');
     }
 
+    if (
+      input.amount !== undefined &&
+      (!Number.isFinite(input.amount) || input.amount < 0)
+    ) {
+      throw new Error('Membership amount must be zero or greater');
+    }
+
     const plan: MembershipPlan | null = await this.planRepository.getById(
       input.planId,
     );
@@ -36,7 +45,9 @@ export class RenewMembershipUseCase {
 
     const today = new Date();
 
-    const startDate = input.startDate ? new Date(input.startDate) : today;
+    const startDate = input.startDate
+      ? parseDateOnly(input.startDate) ?? new Date(input.startDate)
+      : today;
 
     if (Number.isNaN(startDate.getTime())) {
       throw new Error('Invalid membership start date');
@@ -52,9 +63,9 @@ export class RenewMembershipUseCase {
       id: this.idGenerator.generate(),
       memberId: input.memberId,
       planId: plan.id,
-      startDate: startDate.toISOString(),
-      endDate: endDate.toISOString(),
-      amount: plan.amount,
+      startDate: formatDateOnly(startDate),
+      endDate: formatDateOnly(endDate),
+      amount: input.amount ?? plan.amount,
 
       adjustmentAmount: 0,
 

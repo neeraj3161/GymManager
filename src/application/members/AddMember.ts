@@ -1,6 +1,18 @@
 import { MemberRepository } from '../../domain/repositories/MemberRepository';
 import { Member } from '../../domain/entities/Member';
+import { parseDateOnly, startOfToday } from '../../shared/utils/date';
 import { IdGenerator } from '../shared/IdGenerator';
+
+export class DuplicateMemberPhoneError extends Error {
+  constructor(readonly existingMember: Member) {
+    const name = [existingMember.firstName, existingMember.lastName]
+      .filter(Boolean)
+      .join(' ');
+
+    super(`This phone number is already registered to ${name}.`);
+    this.name = 'DuplicateMemberPhoneError';
+  }
+}
 
 export interface AddMemberInput {
   firstName: string;
@@ -30,11 +42,7 @@ export class AddMemberUseCase {
     const existingMember = await this.memberRepository.getByPhone(phone);
 
     if (existingMember) {
-      throw new Error(
-        `This phone number is already registered to ${
-          existingMember.firstName
-        }${existingMember.lastName ? ` ${existingMember.lastName}` : ''}.`,
-      );
+      throw new DuplicateMemberPhoneError(existingMember);
     }
 
     if (input.dateOfBirth) {
@@ -102,44 +110,4 @@ function normalizePhone(value: string): string {
   }
 
   return digits;
-}
-
-function parseDateOnly(value: string): Date | null {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-
-  if (!match) {
-    return null;
-  }
-
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-
-  const date = new Date(year, month - 1, day);
-
-  if (
-    date.getFullYear() !== year ||
-    date.getMonth() !== month - 1 ||
-    date.getDate() !== day
-  ) {
-    return null;
-  }
-
-  return startOfDay(date);
-}
-
-function startOfToday(): Date {
-  const date = new Date();
-
-  date.setHours(0, 0, 0, 0);
-
-  return date;
-}
-
-function startOfDay(date: Date): Date {
-  const result = new Date(date);
-
-  result.setHours(0, 0, 0, 0);
-
-  return result;
 }

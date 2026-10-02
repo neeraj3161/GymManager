@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -20,6 +21,7 @@ import { MembershipPlan } from '../../../domain/entities/MembershipPlan';
 import { PaymentMethod } from '../../../domain/entities/Payment';
 import { useAuthStore } from '../../../store/authStore';
 import { calculateAge } from '../../../shared/utils/age';
+import { DuplicateMemberPhoneError } from '../../../application/members/AddMember';
 
 type PaymentOption = PaymentMethod;
 
@@ -46,6 +48,7 @@ export function AddMemberScreen() {
 
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState('');
+  const [membershipAmount, setMembershipAmount] = useState('');
 
   const [startDate, setStartDate] = useState(formatDateForInput(new Date()));
 
@@ -72,6 +75,7 @@ export function AddMemberScreen() {
 
       if (activePlans.length > 0) {
         setSelectedPlanId(activePlans[0].id);
+        setMembershipAmount(String(activePlans[0].amount));
       }
     } catch (err) {
       console.error('Failed to load plans:', err);
@@ -119,10 +123,11 @@ export function AddMemberScreen() {
   }, [selectedPlan, startDate]);
 
   const paymentNumber = Number(paymentAmount || 0);
+  const membershipAmountNumber = Number(membershipAmount);
 
   const remainingAmount = selectedPlan
     ? Math.max(
-        selectedPlan.amount -
+        membershipAmountNumber -
           (Number.isFinite(paymentNumber) ? paymentNumber : 0),
         0,
       )
@@ -130,11 +135,12 @@ export function AddMemberScreen() {
 
   const handlePlanChange = (plan: MembershipPlan) => {
     setSelectedPlanId(plan.id);
+    setMembershipAmount(String(plan.amount));
   };
 
   const setFullPayment = () => {
-    if (selectedPlan) {
-      setPaymentAmount(String(selectedPlan.amount));
+    if (selectedPlan && Number.isFinite(membershipAmountNumber)) {
+      setPaymentAmount(String(membershipAmountNumber));
     }
   };
 
@@ -198,6 +204,18 @@ export function AddMemberScreen() {
       return;
     }
 
+    if (
+      !membershipAmount.trim() ||
+      !Number.isFinite(membershipAmountNumber) ||
+      membershipAmountNumber < 0
+    ) {
+      Alert.alert(
+        'Invalid amount',
+        'Membership amount must be zero or greater.',
+      );
+      return;
+    }
+
     const parsedStartDate = parseDateInput(startDate);
 
     if (!parsedStartDate) {
@@ -220,7 +238,7 @@ export function AddMemberScreen() {
       return;
     }
 
-    if (amount > selectedPlan.amount) {
+    if (amount > membershipAmountNumber) {
       Alert.alert(
         'Invalid payment',
         'Initial payment cannot be greater than the membership amount.',
@@ -244,6 +262,7 @@ export function AddMemberScreen() {
         memberId: member.id,
         planId: selectedPlan.id,
         startDate: parsedStartDate.toISOString(),
+        amount: membershipAmountNumber,
       });
 
       if (amount > 0) {
@@ -271,6 +290,29 @@ export function AddMemberScreen() {
       );
     } catch (err) {
       console.error('Failed to add member:', err);
+
+      if (err instanceof DuplicateMemberPhoneError) {
+        const existingMember = err.existingMember;
+        const existingName = [existingMember.firstName, existingMember.lastName]
+          .filter(Boolean)
+          .join(' ');
+
+        Alert.alert(
+          'Member already exists',
+          `${existingName} is already registered with this phone number.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'View member',
+              onPress: () =>
+                navigation.replace('MemberDetails', {
+                  memberId: existingMember.id,
+                }),
+            },
+          ],
+        );
+        return;
+      }
 
       Alert.alert(
         'Unable to add member',
@@ -346,11 +388,12 @@ export function AddMemberScreen() {
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={24}
       >
         <ScrollView
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[styles.content, { paddingBottom: 160 }]}
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.header}>
@@ -430,23 +473,40 @@ export function AddMemberScreen() {
                 <Text style={styles.dateChevron}>⌄</Text>
               </Pressable>
 
-              {showDobPicker ? (
-                <DateTimePicker
-                  value={parseDateInput(dateOfBirth) ?? new Date(1995, 0, 1)}
-                  mode="date"
-                  display="calendar"
-                  maximumDate={new Date()}
-                  onChange={(event, selectedDate) => {
-                    setShowDobPicker(false);
+              <Modal
+                transparent
+                animationType="fade"
+                visible={showDobPicker}
+                onRequestClose={() => setShowDobPicker(false)}
+              >
+                <Pressable
+                  style={styles.pickerBackdrop}
+                  onPress={() => setShowDobPicker(false)}
+                >
+                  <View style={styles.pickerSheet}>
+                    <DateTimePicker
+                      value={
+                        parseDateInput(dateOfBirth) ?? new Date(1995, 0, 1)
+                      }
+                      mode="date"
+                      display="default"
+                      maximumDate={new Date()}
+                      onChange={(event, selectedDate) => {
+                        if (event.type === 'dismissed') {
+                          setShowDobPicker(false);
+                          return;
+                        }
 
-                    if (event.type === 'dismissed' || !selectedDate) {
-                      return;
-                    }
+                        if (selectedDate) {
+                          setDateOfBirth(formatDateForInput(selectedDate));
+                        }
 
-                    setDateOfBirth(formatDateForInput(selectedDate));
-                  }}
-                />
-              ) : null}
+                        setShowDobPicker(false);
+                      }}
+                    />
+                  </View>
+                </Pressable>
+              </Modal>
 
               {calculateAge(dateOfBirth) !== null ? (
                 <Text style={styles.ageText}>
@@ -516,6 +576,14 @@ export function AddMemberScreen() {
                 );
               })}
             </View>
+
+            <Field
+              label="Membership amount"
+              value={membershipAmount}
+              onChangeText={setMembershipAmount}
+              placeholder="0"
+              keyboardType="decimal-pad"
+            />
 
             <Field
               label="Start date"
@@ -923,6 +991,21 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '900',
     marginTop: -4,
+  },
+
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.32)',
+    justifyContent: 'flex-end',
+  },
+
+  pickerSheet: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 10,
+    paddingBottom: 20,
+    alignItems: 'center',
   },
 
   planList: {

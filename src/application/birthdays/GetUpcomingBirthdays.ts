@@ -1,5 +1,6 @@
 import { Member } from '../../domain/entities/Member';
 import { MemberRepository } from '../../domain/repositories/MemberRepository';
+import { parseDateOnly } from '../../shared/utils/date';
 
 export interface BirthdayMember {
   member: Member;
@@ -30,9 +31,9 @@ export class GetUpcomingBirthdaysUseCase {
         continue;
       }
 
-      const birthDate = new Date(member.dateOfBirth);
+      const birthDate = parseDateOnly(member.dateOfBirth);
 
-      if (Number.isNaN(birthDate.getTime())) {
+      if (!birthDate) {
         continue;
       }
 

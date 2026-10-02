@@ -3,11 +3,13 @@ import { MembershipRepository } from '../../domain/repositories/MembershipReposi
 import { PlanRepository } from '../../domain/repositories/PlanRepository';
 import { PaymentRepository } from '../../domain/repositories/PaymentRepository';
 import { MembershipAdjustmentRepository } from '../../domain/repositories/MembershipAdjustmentRepository';
+import { formatDateOnly, parseDateOnly } from '../../shared/utils/date';
 import { IdGenerator } from '../shared/IdGenerator';
 
 export interface ChangeMembershipPlanInput {
   memberId: string;
   newPlanId: string;
+  amount?: number;
   applyUnusedCredit: boolean;
   previousMembershipFullyPaid?: boolean;
   startDate?: string;
@@ -38,6 +40,13 @@ export class ChangeMembershipPlanUseCase {
 
     if (!input.newPlanId) {
       throw new Error('New plan is required');
+    }
+
+    if (
+      input.amount !== undefined &&
+      (!Number.isFinite(input.amount) || input.amount < 0)
+    ) {
+      throw new Error('Membership amount must be zero or greater');
     }
 
     const currentMembership = await this.membershipRepository.getByMemberId(
@@ -110,10 +119,13 @@ export class ChangeMembershipPlanUseCase {
 
     const adjustmentAmount = -unusedCredit;
 
-    const finalAmount = Math.max(newPlan.amount + adjustmentAmount, 0);
+    const planAmount = input.amount ?? newPlan.amount;
+    const finalAmount = Math.max(planAmount + adjustmentAmount, 0);
 
     const now = new Date().toISOString();
-    const startDate = input.startDate ? new Date(input.startDate) : today;
+    const startDate = input.startDate
+      ? parseDateOnly(input.startDate) ?? new Date(input.startDate)
+      : today;
 
     if (Number.isNaN(startDate.getTime())) {
       throw new Error('Invalid membership start date');
@@ -131,12 +143,11 @@ export class ChangeMembershipPlanUseCase {
       id: this.idGenerator.generate(),
       memberId: input.memberId,
       planId: newPlan.id,
-      startDate: startDate.toISOString(),
-      endDate: this.calculateEndDate(
-        startDate,
-        newPlan.durationMonths,
-      ).toISOString(),
-      amount: newPlan.amount,
+      startDate: formatDateOnly(startDate),
+      endDate: formatDateOnly(
+        this.calculateEndDate(startDate, newPlan.durationMonths),
+      ),
+      amount: planAmount,
       adjustmentAmount,
       adjustmentType: unusedCredit > 0 ? 'unused_membership_credit' : undefined,
       adjustmentNotes:

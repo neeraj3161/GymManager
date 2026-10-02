@@ -19,6 +19,7 @@ import { SQLiteUserRepository } from '../infrastructure/database/repositories/SQ
 // --------------------------------------------------
 
 import { AddMemberUseCase } from '../application/members/AddMember';
+import { DeleteMemberUseCase } from '../application/members/DeleteMember';
 import { DisableMemberUseCase } from '../application/members/DisableMember';
 import { EnableMemberUseCase } from '../application/members/EnableMember';
 import { GetMemberDetailsUseCase } from '../application/members/GetMemberDetails';
@@ -254,6 +255,8 @@ export const container = {
     // ----------------------------------------------
 
     addMember: new AddMemberUseCase(memberRepository, idGenerator),
+
+    deleteMember: new DeleteMemberUseCase(memberRepository),
 
     disableMember: new DisableMemberUseCase(memberRepository),
 

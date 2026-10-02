@@ -1,11 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -21,6 +24,11 @@ import {
   PreviousDueAction,
 } from '../../components/PreviousDueSection';
 import {
+  getMaxCollectableAmount,
+  getRemainingDue,
+  validateCollectionAmount,
+} from '../../../application/memberships/collectionValidation';
+import {
   MembershipStartDateOption,
   MembershipStartDateSection,
 } from '../../components/MembershipStartDateSection';
@@ -35,6 +43,7 @@ export function RenewMembershipScreen() {
 
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [planAmount, setPlanAmount] = useState('');
 
   const [currentMembership, setCurrentMembership] = useState<any>(null);
   const [startDateOption, setStartDateOption] =
@@ -61,6 +70,7 @@ export function RenewMembershipScreen() {
 
       if (plansData.length > 0) {
         setSelectedPlanId(plansData[0].id);
+        setPlanAmount(String(plansData[0].amount));
       }
 
       const membership = await container.repositories.membership.getByMemberId(
@@ -101,6 +111,21 @@ export function RenewMembershipScreen() {
   }, [load]);
 
   const selectedPlan = plans.find(plan => plan.id === selectedPlanId);
+  const planAmountValue = Number(planAmount);
+  const maxCollectableAmount = getMaxCollectableAmount({
+    previousDue,
+    newPlanAmount: selectedPlan?.amount ?? 0,
+  });
+  const collectedAmount =
+    previousDueAction === 'collect' ? Number(collectAmount) || 0 : 0;
+  const remainingPreviousDue = getRemainingDue(previousDue, collectedAmount);
+  const previousDueToCarryForward =
+    previousDueAction === 'carry_forward' || previousDueAction === 'collect'
+      ? remainingPreviousDue
+      : 0;
+  const totalDueAfterRenewal =
+    (Number.isFinite(planAmountValue) ? planAmountValue : 0) +
+    previousDueToCarryForward;
 
   const renew = async () => {
     if (!selectedPlanId) {
@@ -121,28 +146,38 @@ export function RenewMembershipScreen() {
       return;
     }
 
+    if (
+      !planAmount.trim() ||
+      !Number.isFinite(planAmountValue) ||
+      planAmountValue < 0
+    ) {
+      Alert.alert(
+        'Invalid amount',
+        'Membership amount must be zero or greater.',
+      );
+      return;
+    }
+
     const currentUserId = currentUser.id;
 
     /*
      * Validate collection amount.
      */
-    if (previousDueAction === 'collect' && previousDue > 0) {
+    if (previousDueAction === 'collect') {
       const amount = Number(collectAmount);
+      const validation = validateCollectionAmount({
+        collectAmount: amount,
+        previousDue,
+        newPlanAmount: planAmountValue,
+      });
 
-      if (!Number.isFinite(amount) || amount <= 0) {
-        Alert.alert(
-          'Invalid amount',
-          'Please enter a valid collection amount.',
-        );
-        return;
-      }
-
-      if (amount !== previousDue) {
+      if (!validation.isValid) {
         Alert.alert(
           'Invalid collection',
-          `The previous outstanding due is ₹${previousDue.toLocaleString(
-            'en-IN',
-          )}. Please collect the full amount.`,
+          validation.message ??
+            `Collection amount cannot exceed ₹${maxCollectableAmount.toLocaleString(
+              'en-IN',
+            )}.`,
         );
         return;
       }
@@ -170,7 +205,9 @@ export function RenewMembershipScreen() {
         memberId,
 
         planId: selectedPlanId,
+        planAmount: planAmountValue,
 
+        previousDue,
         previousDueAction: previousDue > 0 ? previousDueAction : 'none',
 
         previousMembershipId: currentMembership.id,
@@ -215,121 +252,162 @@ export function RenewMembershipScreen() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Renew Membership</Text>
-
-        <Text style={styles.memberName}>{memberName}</Text>
-
-        <Text style={styles.sectionTitle}>Choose a plan</Text>
-
-        {plans.map(plan => {
-          const selected = plan.id === selectedPlanId;
-
-          return (
-            <Pressable
-              key={plan.id}
-              onPress={() => setSelectedPlanId(plan.id)}
-              style={[styles.planCard, selected && styles.selectedPlan]}
-            >
-              <View style={styles.planInfo}>
-                <Text style={styles.planName}>{plan.name}</Text>
-
-                <Text style={styles.duration}>
-                  {plan.durationMonths} month
-                  {plan.durationMonths === 1 ? '' : 's'}
-                </Text>
-              </View>
-
-              <Text style={styles.amount}>
-                ₹{plan.amount.toLocaleString('en-IN')}
-              </Text>
-            </Pressable>
-          );
-        })}
-
-        <PreviousDueSection
-          amount={previousDue}
-          action={previousDueAction}
-          onActionChange={setPreviousDueAction}
-          collectAmount={collectAmount}
-          onCollectAmountChange={setCollectAmount}
-          paymentMethod={paymentMethod}
-          onPaymentMethodChange={setPaymentMethod}
-          writeOffReason={writeOffReason}
-          onWriteOffReasonChange={setWriteOffReason}
-        />
-
-        {currentMembership && (
-          <MembershipStartDateSection
-            previousEndDate={currentMembership.endDate}
-            selected={startDateOption}
-            onChange={setStartDateOption}
-          />
-        )}
-
-        {selectedPlan && (
-          <View style={styles.summary}>
-            <Text style={styles.summaryTitle}>Renewal Summary</Text>
-
-            <View style={styles.summaryRow}>
-              <Text style={styles.label}>Plan</Text>
-
-              <Text style={styles.value}>{selectedPlan.name}</Text>
-            </View>
-
-            <View style={styles.summaryRow}>
-              <Text style={styles.label}>Duration</Text>
-
-              <Text style={styles.value}>
-                {selectedPlan.durationMonths} month
-                {selectedPlan.durationMonths === 1 ? '' : 's'}
-              </Text>
-            </View>
-
-            <View style={styles.summaryRow}>
-              <Text style={styles.label}>Amount</Text>
-
-              <Text style={styles.value}>
-                ₹{selectedPlan.amount.toLocaleString('en-IN')}
-              </Text>
-            </View>
-
-            {previousDue > 0 && (
-              <View style={styles.summaryRow}>
-                <Text style={styles.label}>Previous due</Text>
-
-                <Text style={styles.value}>
-                  ₹{previousDue.toLocaleString('en-IN')}
-                </Text>
-              </View>
-            )}
-
-            {previousDue > 0 && (
-              <View style={styles.summaryRow}>
-                <Text style={styles.label}>Due action</Text>
-
-                <Text style={styles.value}>
-                  {previousDueAction === 'collect'
-                    ? 'Collect'
-                    : previousDueAction === 'write_off'
-                    ? 'Write Off'
-                    : 'Carry Forward'}
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        <Pressable
-          style={[styles.renewButton, saving && styles.disabledButton]}
-          onPress={renew}
-          disabled={saving}
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={24}
+      >
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.renewButtonText}>
-            {saving ? 'Renewing...' : 'Confirm Renewal'}
-          </Text>
-        </Pressable>
-      </ScrollView>
+          <Text style={styles.title}>Renew Membership</Text>
+
+          <Text style={styles.memberName}>{memberName}</Text>
+
+          <Text style={styles.sectionTitle}>Choose a plan</Text>
+
+          {plans.map(plan => {
+            const selected = plan.id === selectedPlanId;
+
+            return (
+              <Pressable
+                key={plan.id}
+                onPress={() => {
+                  setSelectedPlanId(plan.id);
+                  setPlanAmount(String(plan.amount));
+                }}
+                style={[styles.planCard, selected && styles.selectedPlan]}
+              >
+                <View style={styles.planInfo}>
+                  <Text style={styles.planName}>{plan.name}</Text>
+
+                  <Text style={styles.duration}>
+                    {plan.durationMonths} month
+                    {plan.durationMonths === 1 ? '' : 's'}
+                  </Text>
+                </View>
+
+                <Text style={styles.amount}>
+                  ₹{plan.amount.toLocaleString('en-IN')}
+                </Text>
+              </Pressable>
+            );
+          })}
+
+          {selectedPlan ? (
+            <View style={styles.amountEditor}>
+              <Text style={styles.amountLabel}>Membership amount</Text>
+              <View style={styles.amountInputWrap}>
+                <Text style={styles.currency}>₹</Text>
+                <TextInput
+                  value={planAmount}
+                  onChangeText={setPlanAmount}
+                  keyboardType="decimal-pad"
+                  style={styles.amountInput}
+                  selectTextOnFocus
+                />
+              </View>
+            </View>
+          ) : null}
+
+          <PreviousDueSection
+            amount={previousDue}
+            action={previousDueAction}
+            onActionChange={setPreviousDueAction}
+            collectAmount={collectAmount}
+            onCollectAmountChange={setCollectAmount}
+            paymentMethod={paymentMethod}
+            onPaymentMethodChange={setPaymentMethod}
+            writeOffReason={writeOffReason}
+            onWriteOffReasonChange={setWriteOffReason}
+            maxCollectableAmount={maxCollectableAmount}
+          />
+
+          {currentMembership && (
+            <MembershipStartDateSection
+              previousEndDate={currentMembership.endDate}
+              selected={startDateOption}
+              onChange={setStartDateOption}
+            />
+          )}
+
+          {selectedPlan && (
+            <View style={styles.summary}>
+              <Text style={styles.summaryTitle}>Renewal Summary</Text>
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.label}>Plan</Text>
+
+                <Text style={styles.value}>{selectedPlan.name}</Text>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.label}>Duration</Text>
+
+                <Text style={styles.value}>
+                  {selectedPlan.durationMonths} month
+                  {selectedPlan.durationMonths === 1 ? '' : 's'}
+                </Text>
+              </View>
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.label}>Amount</Text>
+
+                <Text style={styles.value}>
+                  ₹
+                  {(Number.isFinite(planAmountValue)
+                    ? planAmountValue
+                    : 0
+                  ).toLocaleString('en-IN')}
+                </Text>
+              </View>
+
+              {previousDue > 0 && (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.label}>Previous due</Text>
+
+                  <Text style={styles.value}>
+                    ₹{previousDue.toLocaleString('en-IN')}
+                  </Text>
+                </View>
+              )}
+
+              {previousDue > 0 && (
+                <View style={styles.summaryRow}>
+                  <Text style={styles.label}>Due action</Text>
+
+                  <Text style={styles.value}>
+                    {previousDueAction === 'collect'
+                      ? 'Collect'
+                      : previousDueAction === 'write_off'
+                      ? 'Write Off'
+                      : 'Carry Forward'}
+                  </Text>
+                </View>
+              )}
+
+              <View style={styles.summaryRow}>
+                <Text style={styles.label}>Total due after renewal</Text>
+
+                <Text style={styles.value}>
+                  ₹{totalDueAfterRenewal.toLocaleString('en-IN')}
+                </Text>
+              </View>
+            </View>
+          )}
+
+          <Pressable
+            style={[styles.renewButton, saving && styles.disabledButton]}
+            onPress={renew}
+            disabled={saving}
+          >
+            <Text style={styles.renewButtonText}>
+              {saving ? 'Renewing...' : 'Confirm Renewal'}
+            </Text>
+          </Pressable>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -348,9 +426,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#F6F7F9',
   },
 
+  flex: {
+    flex: 1,
+  },
+
   container: {
     padding: 16,
-    paddingBottom: 40,
+    paddingBottom: 120,
   },
 
   title: {
@@ -408,6 +490,44 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '800',
     color: '#111827',
+  },
+
+  amountEditor: {
+    marginTop: 4,
+    marginBottom: 8,
+  },
+
+  amountLabel: {
+    marginBottom: 7,
+    color: '#374151',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  amountInputWrap: {
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+  },
+
+  currency: {
+    marginRight: 8,
+    color: '#6B7280',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  amountInput: {
+    flex: 1,
+    height: '100%',
+    color: '#111827',
+    fontSize: 16,
+    fontWeight: '700',
   },
 
   summary: {

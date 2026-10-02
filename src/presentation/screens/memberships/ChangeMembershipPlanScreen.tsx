@@ -9,6 +9,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import {
@@ -28,6 +29,11 @@ import {
 import type { PreviousDueAction } from '../../components/PreviousDueSection';
 import { PaymentMethod } from '../../../domain/entities/Payment';
 import { useAuthStore } from '../../../store/authStore';
+import {
+  getMaxCollectableAmount,
+  getRemainingDue,
+  validateCollectionAmount,
+} from '../../../application/memberships/collectionValidation';
 
 type RouteParams = {
   memberId: string;
@@ -48,6 +54,7 @@ export function ChangeMembershipPlanScreen() {
 
   const [plans, setPlans] = useState<MembershipPlan[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [planAmount, setPlanAmount] = useState('');
 
   const [unusedDays, setUnusedDays] = useState(0);
   const [unusedCredit, setUnusedCredit] = useState(0);
@@ -56,6 +63,7 @@ export function ChangeMembershipPlanScreen() {
   const [changing, setChanging] = useState(false);
 
   const selectedPlan = plans.find(plan => plan.id === selectedPlanId);
+  const planAmountValue = Number(planAmount);
   const [previousDue, setPreviousDue] = useState(0);
 
   const [previousDueAction, setPreviousDueAction] =
@@ -159,13 +167,26 @@ export function ChangeMembershipPlanScreen() {
   };
 
   const baseAmount = selectedPlan
-    ? Math.max(selectedPlan.amount - unusedCredit, 0)
+    ? Math.max(
+        (Number.isFinite(planAmountValue) ? planAmountValue : 0) - unusedCredit,
+        0,
+      )
     : 0;
+
+  const collectedAmount =
+    previousDueAction === 'collect' ? Number(collectAmount) || 0 : 0;
+  const remainingPreviousDue = getRemainingDue(previousDue, collectedAmount);
 
   const finalAmount =
     previousDueAction === 'carry_forward'
       ? baseAmount + previousDue
+      : previousDueAction === 'collect'
+      ? baseAmount + remainingPreviousDue
       : baseAmount;
+  const maxCollectableAmount = getMaxCollectableAmount({
+    previousDue,
+    newPlanAmount: baseAmount,
+  });
 
   const changePlan = async () => {
     if (!selectedPlan) {
@@ -173,11 +194,23 @@ export function ChangeMembershipPlanScreen() {
       return;
     }
 
+    if (
+      !planAmount.trim() ||
+      !Number.isFinite(planAmountValue) ||
+      planAmountValue < 0
+    ) {
+      Alert.alert(
+        'Invalid amount',
+        'Membership amount must be zero or greater.',
+      );
+      return;
+    }
+
     if (!currentMembership) {
       Alert.alert(
         'Create membership',
         `Assign the ${selectedPlan.name} plan to ${memberName}?\n\n` +
-          `Plan amount: ₹${selectedPlan.amount.toLocaleString('en-IN')}`,
+          `Plan amount: ₹${planAmountValue.toLocaleString('en-IN')}`,
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -188,6 +221,7 @@ export function ChangeMembershipPlanScreen() {
                 await container.useCases.createMembership.execute({
                   memberId,
                   planId: selectedPlan.id,
+                  amount: planAmountValue,
                   startDate: new Date().toISOString(),
                 });
                 Alert.alert(
@@ -215,7 +249,7 @@ export function ChangeMembershipPlanScreen() {
     Alert.alert(
       'Confirm plan change',
       `Change ${memberName}'s membership to ${selectedPlan.name}?\n\n` +
-        `New plan: ₹${selectedPlan.amount.toLocaleString('en-IN')}\n` +
+        `New plan: ₹${planAmountValue.toLocaleString('en-IN')}\n` +
         `Unused credit: ₹${unusedCredit.toLocaleString('en-IN')}\n` +
         `Amount to pay: ₹${finalAmount.toLocaleString('en-IN')}`,
       [
@@ -233,10 +267,31 @@ export function ChangeMembershipPlanScreen() {
                 throw new Error('Unable to identify the staff user.');
               }
 
+              if (previousDueAction === 'collect') {
+                const validation = validateCollectionAmount({
+                  collectAmount: Number(collectAmount),
+                  previousDue,
+                  newPlanAmount: baseAmount,
+                });
+
+                if (!validation.isValid) {
+                  Alert.alert(
+                    'Invalid collection',
+                    validation.message ??
+                      `Collection amount cannot exceed ₹${maxCollectableAmount.toLocaleString(
+                        'en-IN',
+                      )}.`,
+                  );
+                  return;
+                }
+              }
+
               const result =
                 await container.useCases.processMembershipTransition.execute({
                   memberId,
                   planId: selectedPlan.id,
+                  planAmount: planAmountValue,
+                  previousDue,
                   previousDueAction:
                     previousDue > 0 ? previousDueAction : 'none',
                   previousMembershipId: currentMembership.id,
@@ -466,6 +521,7 @@ export function ChangeMembershipPlanScreen() {
                   onPaymentMethodChange={setPaymentMethod}
                   writeOffReason={writeOffReason}
                   onWriteOffReasonChange={setWriteOffReason}
+                  maxCollectableAmount={maxCollectableAmount}
                 />
               </View>
             </>
@@ -536,7 +592,10 @@ export function ChangeMembershipPlanScreen() {
               return (
                 <Pressable
                   key={plan.id}
-                  onPress={() => setSelectedPlanId(plan.id)}
+                  onPress={() => {
+                    setSelectedPlanId(plan.id);
+                    setPlanAmount(String(plan.amount));
+                  }}
                   style={({ pressed }) => [
                     styles.planCard,
                     selected && styles.planCardSelected,
@@ -605,6 +664,22 @@ export function ChangeMembershipPlanScreen() {
               );
             })}
 
+            {selectedPlan ? (
+              <View style={styles.amountEditor}>
+                <Text style={styles.amountLabel}>Membership amount</Text>
+                <View style={styles.amountInputWrap}>
+                  <Text style={styles.currency}>₹</Text>
+                  <TextInput
+                    value={planAmount}
+                    onChangeText={setPlanAmount}
+                    keyboardType="decimal-pad"
+                    style={styles.amountInput}
+                    selectTextOnFocus
+                  />
+                </View>
+              </View>
+            ) : null}
+
             {plans.length > 0 ? (
               <Pressable
                 style={[styles.secondaryButton, styles.addPlanButton]}
@@ -631,7 +706,10 @@ export function ChangeMembershipPlanScreen() {
               <View style={styles.summaryRows}>
                 <SummaryRow
                   label="New plan"
-                  value={`₹${selectedPlan.amount.toLocaleString('en-IN')}`}
+                  value={`₹${(Number.isFinite(planAmountValue)
+                    ? planAmountValue
+                    : 0
+                  ).toLocaleString('en-IN')}`}
                 />
 
                 {unusedCredit > 0 ? (
@@ -1099,6 +1177,43 @@ const styles = StyleSheet.create({
   planCardPressed: {
     opacity: 0.75,
     transform: [{ scale: 0.99 }],
+  },
+
+  amountEditor: {
+    marginBottom: 18,
+  },
+
+  amountLabel: {
+    marginBottom: 7,
+    color: '#475467',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  amountInputWrap: {
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E0E5EB',
+    borderRadius: 12,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 12,
+  },
+
+  currency: {
+    marginRight: 8,
+    color: '#667085',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  amountInput: {
+    flex: 1,
+    height: '100%',
+    color: '#182230',
+    fontSize: 16,
+    fontWeight: '800',
   },
 
   planLeading: {

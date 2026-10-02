@@ -23,6 +23,7 @@ import {
 
 import { Member } from '../../../domain/entities/Member';
 import { container } from '../../../di/container';
+import { buildWhatsAppUrl } from '../../../shared/utils/whatsapp';
 
 type MemberFilter =
   | 'all'
@@ -122,7 +123,7 @@ export function MembersScreen() {
 
         const expiryLimitKey = toLocalDateKey(expiryLimit);
 
-        const expiringMembers: MemberWithMembership[] = [];
+        const attentionMembers: MemberWithMembership[] = [];
 
         for (const member of allMembers) {
           if (member.status !== 'active') continue;
@@ -138,14 +139,14 @@ export function MembersScreen() {
             /^\d{4}-\d{2}-\d{2}$/.test(endDate) &&
             endDate <= expiryLimitKey
           ) {
-            expiringMembers.push({
+            attentionMembers.push({
               ...member,
               membershipEndDate: membership.endDate ?? null,
             });
           }
         }
 
-        setMembers(expiringMembers);
+        setMembers(attentionMembers);
         return;
       }
 
@@ -346,7 +347,7 @@ export function MembersScreen() {
       : filter === 'paymentsReceived'
       ? 'Payments Received'
       : filter === 'expiringSoon'
-      ? 'Expiring Soon'
+      ? 'Expired / Expiring'
       : 'Members';
 
   const screenSubtitle =
@@ -355,7 +356,7 @@ export function MembersScreen() {
       : filter === 'paymentsReceived'
       ? `${members.length} members with recorded payments`
       : filter === 'expiringSoon'
-      ? `${members.length} memberships expiring within 7 days`
+      ? `${members.length} expired or expiring within 7 days`
       : `${members.length} total · ${activeCount} active`;
 
   return (
@@ -384,7 +385,7 @@ export function MembersScreen() {
             : filter === 'paymentsReceived'
             ? 'Search members with payments'
             : filter === 'expiringSoon'
-            ? 'Search expiring members'
+            ? 'Search expired or expiring members'
             : 'Search name, phone or member number'
         }
         placeholderTextColor="#9CA3AF"
@@ -478,8 +479,11 @@ export function MembersScreen() {
               style={styles.remindOption}
               onPress={() =>
                 remindMember &&
-                sendMembershipReminder(remindMember, 'sms', () =>
-                  setRemindMember(null),
+                sendMembershipReminder(
+                  remindMember,
+                  'sms',
+                  () => setRemindMember(null),
+                  filter === 'feesDue',
                 )
               }
             >
@@ -489,8 +493,11 @@ export function MembersScreen() {
               style={styles.remindOption}
               onPress={() =>
                 remindMember &&
-                sendMembershipReminder(remindMember, 'whatsapp', () =>
-                  setRemindMember(null),
+                sendMembershipReminder(
+                  remindMember,
+                  'whatsapp',
+                  () => setRemindMember(null),
+                  filter === 'feesDue',
                 )
               }
             >
@@ -677,6 +684,7 @@ function buildMembershipReminder(
   gymName: string,
   gymPhone: string,
   remainingAmount: number,
+  focusOnFeesDue: boolean,
 ): string {
   const name = member.firstName?.trim() || 'Member';
   const days = getMembershipDaysRemaining(member.membershipEndDate);
@@ -698,6 +706,24 @@ function buildMembershipReminder(
 
   const expiry = expiryDate ? ` (expiry date: ${expiryDate})` : '';
 
+  if (focusOnFeesDue) {
+    const expiryDetails =
+      days !== null && days <= 7
+        ? days < 0
+          ? ` Your membership expired ${Math.abs(days)} day(s) ago${expiry}.`
+          : days === 0
+          ? ` Your membership expires today${expiry}.`
+          : ` Your membership expires in ${days} day(s)${expiry}.`
+        : '';
+
+    return (
+      `Hi ${name}, this is a fee reminder from ${gym}. ` +
+      `Your outstanding fees of ₹${remainingAmount.toLocaleString(
+        'en-IN',
+      )} are due now. Please pay at your earliest convenience.${expiryDetails}${contact}`
+    );
+  }
+
   if (days !== null && days < 0 && remainingAmount <= 0) {
     return `Hi ${name}, this is a reminder from ${gym}. Your membership ${status}${expiry}. Please renew your membership to continue. Thank you.${contact}`;
   }
@@ -716,6 +742,7 @@ async function sendMembershipReminder(
   member: MemberWithMembership,
   channel: 'sms' | 'whatsapp',
   onOpened: () => void,
+  focusOnFeesDue: boolean,
 ) {
   if (!member.phone?.trim()) {
     Alert.alert(
@@ -745,16 +772,16 @@ async function sendMembershipReminder(
     gymName,
     gymPhone,
     remainingAmount,
+    focusOnFeesDue,
   );
-  const phone = member.phone.replace(/[^\d]/g, '');
-  const whatsappPhone = phone.length === 10 ? `91${phone}` : phone;
-  const url =
-    channel === 'sms'
-      ? `sms:${member.phone.replace(/[^+\d]/g, '')}?body=${encodeURIComponent(
-          message,
-        )}`
-      : `https://wa.me/${whatsappPhone}?text=${encodeURIComponent(message)}`;
   try {
+    const url =
+      channel === 'sms'
+        ? `sms:${member.phone.replace(/[^+\d]/g, '')}?body=${encodeURIComponent(
+            message,
+          )}`
+        : buildWhatsAppUrl(member.phone, message);
+
     await Linking.openURL(url);
     onOpened();
   } catch {
@@ -783,7 +810,7 @@ function EmptyState({ hasSearch, filter, onAddMember }: EmptyStateProps) {
   } else if (filter === 'feesDue') {
     message = 'No members have fees due.';
   } else if (filter === 'expiringSoon') {
-    message = 'No memberships expiring soon.';
+    message = 'No expired or soon-to-expire memberships.';
   }
 
   return (

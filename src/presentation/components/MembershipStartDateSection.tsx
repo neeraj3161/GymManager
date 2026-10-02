@@ -1,6 +1,8 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { formatDateOnly, parseDateOnly } from '../../shared/utils/date';
+
 export type MembershipStartDateOption = 'previous_end' | 'today';
 
 interface MembershipStartDateSectionProps {
@@ -10,7 +12,9 @@ interface MembershipStartDateSectionProps {
 }
 
 function formatDate(dateValue: string): string {
-  return new Date(dateValue).toLocaleDateString('en-IN', {
+  const parsed = parseDateOnly(dateValue) ?? new Date(dateValue);
+
+  return parsed.toLocaleDateString('en-IN', {
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -35,7 +39,7 @@ export function MembershipStartDateSection({
     {
       value: 'today',
       label: 'Today',
-      date: formatDate(new Date().toISOString()),
+      date: formatDate(formatDateOnly(new Date())),
     },
   ];
 

@@ -8,6 +8,7 @@ export interface CarryForwardMembershipDueInput {
   previousMembershipId: string;
   newMembershipId: string;
   createdBy: string;
+  amount?: number;
   notes?: string;
 }
 
@@ -75,7 +76,12 @@ export class CarryForwardMembershipDueUseCase {
       0,
     );
 
-    if (balance <= 0) {
+    const transferAmount = Math.min(
+      input.amount !== undefined ? Math.max(input.amount, 0) : balance,
+      balance,
+    );
+
+    if (transferAmount <= 0 || balance <= 0) {
       throw new Error('The previous membership has no outstanding due.');
     }
 
@@ -87,7 +93,7 @@ export class CarryForwardMembershipDueUseCase {
       membershipId: previousMembership.id,
       memberId: previousMembership.memberId,
       type: 'carry_forward_out',
-      amount: -balance,
+      amount: -transferAmount,
       reason: 'Outstanding due carried forward to new membership',
       notes: input.notes?.trim() || undefined,
       createdBy: input.createdBy,
@@ -102,7 +108,7 @@ export class CarryForwardMembershipDueUseCase {
       membershipId: newMembership.id,
       memberId: newMembership.memberId,
       type: 'carry_forward_in',
-      amount: balance,
+      amount: transferAmount,
       reason: 'Outstanding due carried forward from previous membership',
       notes: input.notes?.trim() || undefined,
       createdBy: input.createdBy,
