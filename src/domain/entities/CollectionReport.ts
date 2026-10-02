@@ -1,5 +1,11 @@
+import type { MembershipAdjustmentType } from './MembershipAdjustment';
+
 export interface CollectionReportRow {
   paymentId: string;
+  transactionType:
+    | 'payment'
+    | 'unused_membership_credit'
+    | MembershipAdjustmentType;
   paymentDate: string;
   memberId: string;
   memberNumber: string;
@@ -17,4 +23,5 @@ export interface CollectionReport {
   totalAmount: number;
   paymentCount: number;
   payments: CollectionReportRow[];
+  transactions: CollectionReportRow[];
 }

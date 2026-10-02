@@ -4,7 +4,12 @@ function escapeCsv(value: unknown): string {
   const text = String(value ?? '');
 
   // Prevent spreadsheet formula injection.
-  const safe = /^[\s]*[=+\-@]/.test(text) ? `'${text}` : text;
+  const safe =
+    typeof value === 'number' && value < 0
+      ? text
+      : /^[\s]*[=+\-@]/.test(text)
+      ? `'${text}`
+      : text;
 
   return `"${safe.replace(/"/g, '""')}"`;
 }
@@ -16,9 +21,18 @@ export function collectionReportToCsv(report: CollectionReport): string {
     ['To (exclusive)', report.toDate],
     ['Total Collected', report.totalAmount.toFixed(2)],
     ['Payment Count', report.paymentCount],
+    ['Transaction Count', report.transactions.length],
+    [
+      'Write-off Total (not collected)',
+      report.transactions
+        .filter(transaction => transaction.transactionType === 'write_off')
+        .reduce((total, transaction) => total + Math.abs(transaction.amount), 0)
+        .toFixed(2),
+    ],
     [],
     [
-      'Payment Date',
+      'Transaction Date',
+      'Transaction Type',
       'Member Number',
       'Member Name',
       'Member ID',
@@ -28,16 +42,17 @@ export function collectionReportToCsv(report: CollectionReport): string {
       'Recorded By',
       'Notes',
     ],
-    ...report.payments.map(payment => [
-      payment.paymentDate,
-      payment.memberNumber,
-      payment.memberName,
-      payment.memberId,
-      payment.membershipId,
-      payment.amount.toFixed(2),
-      payment.paymentMethod,
-      payment.recordedBy,
-      payment.notes ?? '',
+    ...report.transactions.map(transaction => [
+      transaction.paymentDate,
+      transaction.transactionType.replace(/_/g, ' '),
+      transaction.memberNumber,
+      transaction.memberName,
+      transaction.memberId,
+      transaction.membershipId,
+      transaction.amount.toFixed(2),
+      transaction.paymentMethod,
+      transaction.recordedBy,
+      transaction.notes ?? '',
     ]),
   ];
 
